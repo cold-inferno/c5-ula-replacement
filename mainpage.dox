@@ -1,0 +1,53 @@
+/**
+@mainpage ULA replacement software
+
+The <a href="http://en.wikipedia.org/wiki/Sinclair_C5">Sinclair C5</a> is an 
+electric vehicle from the early 1980's. It was the first electric bicycle 
+manufactured in mass production.
+
+Simple mechanics and electronics made the C5 not only relatively affordable, but 
+also quite fail-safe and maintainable by almost everybody.
+
+Although the C5 also has some real shortcomings, this may be a reason why 
+it still enjoys a wide popularity among a group of enthusiasts and hobbyists.
+
+However, there is one thing that cannot be repaired: the ULA chip.
+
+This chip (an uncommited logic array) is the "brain" of the vehicle, so to speak.
+If this chip gets lost or is damaged the C5 still can be used - but without 
+motor supervision and without the characteristic LED display.
+
+The <i>ULA replacement</i> is an electronic unit which replaces the original 
+control chip of the C5 and also offers some additionally features.
+
+<b>This documentation describes the software for the ULA replacement unit.</b>
+
+For more information about the replacement unit see 
+<a href="http://www.cypax.net/projects/ula/index.php">cypax.net</a>.
+
+<hr>
+
+This software project is licensed under Creative Commons by-nc-sa 3.0
+
+You are free
+<ul>
+<li>to share: to copy, distribute and transmit the work</li>
+<li>to remix: to adapt the work</li>
+</ul>
+
+Under the following conditions:
+<ul>
+<li>Attribution: you must attribute the work in the manner specified by the author
+  or licensor</li>
+<li>Noncommercial: you may not use this work for commercial purposes.</li>
+<li>Share alike: if you alter, transform, or build upon this work, you may 
+  distribute the resulting work only under the same or similar license to this 
+  one.</li>
+</ul>
+
+See: http://creativecommons.org/licenses/by-nc-sa/3.0/
+
+
+Philipp Bank, December 2010
+
+*/
