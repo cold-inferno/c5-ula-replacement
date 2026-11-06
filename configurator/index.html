@@ -53,6 +53,14 @@ section.tab { display: none; } section.tab.active { display: block; }
 .tile .s { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .flags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .flag { font-size: 12px; padding: 2px 8px; border-radius: 99px; background: var(--chip); }
+.leds { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: center; margin-top: 6px; font-size: 12px; color: var(--muted); }
+.leds .row5 { display: flex; gap: 5px; }
+.dot { width: 14px; height: 14px; border-radius: 50%; background: var(--chip); border: 1px solid var(--line); }
+.dot.on { background: #f5b301; border-color: #f5b301; }
+.dot.on.g { background: #3fb950; border-color: #3fb950; }
+.dot.on.r { background: var(--err); border-color: var(--err); }
+.dot.blink { animation: blink .5s steps(1) infinite; }
+@keyframes blink { 50% { opacity: .15; } }
 .flag.warn { color: var(--warn); } .flag.err { color: var(--err); } .flag.ok { color: var(--ok); }
 form.settings { display: grid; grid-template-columns: 1fr; gap: 12px; }
 .row { display: grid; grid-template-columns: 220px 1fr; gap: 10px; align-items: center; }
@@ -114,6 +122,10 @@ dl.kv dt { color: var(--muted); } dl.kv dd { margin: 0; font-variant-numeric: ta
       <div class="tile"><div class="k">Motor current</div><div class="v" id="tCurr">–<small>A</small></div><div class="s" id="tCurrRaw">approx.</div></div>
       <div class="tile"><div class="k">Motor relay</div><div class="v" id="tRelay">–</div><div class="s" id="tSwitch">button –</div></div>
       <div class="tile"><div class="k">Motor temp.</div><div class="v" id="tTemp">–<small>°C</small></div><div class="s" id="tTempRaw">ADC –</div></div>
+      <div class="tile"><div class="k">Pod LEDs</div>
+        <div class="leds"><span id="lLeftName">left</span><div class="row5" id="lLeft"></div>
+                          <span>battery</span><div class="row5" id="lRight"></div></div>
+        <div class="s" id="lNote">–</div></div>
       <div class="tile"><div class="k">Status</div><div class="flags" id="tFlags"><span class="flag">–</span></div><div class="s" id="tTime">uptime –</div></div>
     </div>
     <div class="card" style="margin-top:14px">
@@ -246,6 +258,16 @@ function adcToCelsius(adc) {                             // temp.c temp_GetCelsi
   for (const [lim, deg] of table) if (ntc >= lim) return deg;
   return 85;
 }
+/* pod LED bars (leds.c, firmware V1201): left = speed with button released,
+   motor current with button pressed; right = battery (resting voltage) */
+const SWITCH_ON_ADC = 300;
+const CURR_LED = [1, 17, 37, 56, 75];                 // >0, 5, 10, 15, 20 A
+const VOLT_LED_LFP = [568, 587, 594, 599, 606];       // 12.5 12.9 13.05 13.15 13.3 V
+const VOLT_LED_LEAD = [448, 472, 496, 520, 544];      // 10.0 .. 12.0 V
+function dots(el, n, cls = '', blinkTop = false) {
+  el.innerHTML = [0, 1, 2, 3, 4].map(i =>
+    `<span class="dot ${i < n ? 'on ' + cls : ''} ${blinkTop && i === 4 ? 'on blink ' + cls : ''}"></span>`).join('');
+}
 const COND = [[1,'voltage warning','warn'],[2,'current warning','warn'],[4,'temperature warning','warn'],
               [8,'voltage error','err'],[16,'current error','err'],[32,'temperature error','err']];
 
@@ -326,9 +348,9 @@ class MockC5 {
   constructor() {
     this.onData = null; this.onClose = null;
     this.eeprom = [1, 0x00, 0x05, 0xFA, 0x00, 0x1E, 0x00, 0x2D, 0x00, 1, 1];
-    this.fwVersion = 1200; this.state = 'app'; this.flashBuf = null; this.t0 = performance.now(); this.dist = 0;
+    this.fwVersion = 1201; this.state = 'app'; this.flashBuf = null; this.t0 = performance.now(); this.dist = 0;
   }
-  async open() { this.emitText('ULA replacement V1200\n\nCRC: 0xA164FAFF\n\nBAT: LiFePO4\n'); this.startApp(false); }
+  async open() { this.emitText('ULA replacement V1201\n\nCRC: 0xA164FAFF\n\nBAT: LiFePO4\n'); this.startApp(false); }
   async close() { clearInterval(this.timer); clearTimeout(this.bootTimer); if (this.onClose) this.onClose(); }
   emit(bytes) { setTimeout(() => this.onData && this.onData(Uint8Array.from(bytes)), 3); }
   emitText(s) { this.emit([...s.replace(/\n/g, '\r\n')].map(c => c.charCodeAt(0))); }
@@ -352,11 +374,12 @@ class MockC5 {
     const pedalling = speed > 10 && Math.sin(t / 2.3) > -0.6;
     const rpm = pedalling ? Math.round(55 + 10 * Math.sin(t)) : 0;
     const min = this.u16(5), max = this.u16(3);
-    const ena = this.eeprom[0] ? (pedalling && speed >= min && (max === 0 || speed <= max)) : true;
+    const pressed = Math.sin(t / 3.1) > -0.2;                                       // rider holds the button
+    const ena = pressed && (this.eeprom[0] ? (pedalling && speed >= min && (max === 0 || speed <= max)) : true);
     const curr = ena ? Math.round(110 + 25 * Math.sin(t * 1.7)) : 0;
     const volt = Math.round(601 - (ena ? curr * 0.12 : 0));
     this.dist += speed / 36 * 256;                                                 // mm
-    const f = [Math.round(this.dist), speed, rpm, pedalling ? 300 : 2000, ena ? 512 : 0, 380,
+    const f = [Math.round(this.dist), speed, rpm, pedalling ? 300 : 2000, pressed ? 770 : 0, 380,
                volt, 0, curr, ena ? 1 : 0, 0, Math.round(t * 1000), 601];
     this.emitText('#' + f.join('|') + '|\n');
   }
@@ -525,6 +548,22 @@ function showTelemetry(l) {
   const flags = COND.filter(([bit]) => cond & bit);
   $('tFlags').innerHTML = flags.length ? flags.map(([, n, c]) => `<span class="flag ${c}">${n}</span>`).join('')
                                        : '<span class="flag ok">all OK</span>';
+  // pod LEDs (approximation of what leds.c shows)
+  const pressed = sw > SWITCH_ON_ADC;
+  if (cond) {
+    dots($('lLeft'), 5, 'r', false); $('lLeftName').textContent = 'left';
+    $('lNote').textContent = 'left bar flashes a warning/error code';
+  } else if (pressed) {
+    dots($('lLeft'), CURR_LED.filter(t => curr >= t).length, 'g'); $('lLeftName').textContent = 'current';
+    $('lNote').textContent = 'button pressed: left bar = motor current';
+  } else {
+    const lvl = speed > 300 ? 6 : Math.min(5, Math.floor(speed / 50));
+    dots($('lLeft'), Math.min(lvl, 5), 'g', lvl === 6); $('lLeftName').textContent = 'speed';
+    $('lNote').textContent = 'button released: left bar = speed, 1 LED per 5 km/h' + (link.fwVersion && link.fwVersion < 1201 ? ' (needs V1201+)' : '');
+  }
+  const lead = /lead/i.test($('dBat').textContent);
+  const vbar = lead ? volt : (rest ?? volt);
+  if (cond & 8) dots($('lRight'), 5, 'r'); else dots($('lRight'), (lead ? VOLT_LED_LEAD : VOLT_LED_LFP).filter(t => vbar >= t).length);
   const s = Math.floor(time / 1000);
   $('tTime').textContent = `uptime ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }

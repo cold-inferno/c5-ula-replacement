@@ -40,6 +40,8 @@
 #include "current.h"
 #include "print.h"
 #include "pedelec.h"
+#include "leds.h"
+#include "switch.h"
 
 
 
@@ -248,6 +250,10 @@ int main (void)
     /* every 256ms: update average motor current */
     if(TIMER_IS_TICK128())
     {
+      /* 2026: left LED bar shows speed while the motor button is released,
+         motor current while it is pressed */
+      leds_SetLeftBar((ON == switch_Get()) ? TRUE : FALSE,
+                      pedelec_SpeedBarLevel(SPEED_GET()));
       current_UpdateAvg();
     }
     

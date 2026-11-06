@@ -42,6 +42,7 @@
 EXTERN void leds_Init         (void);
 EXTERN void leds_ShowVoltage  (void);
 EXTERN void leds_ShowCurrent  (void);
+EXTERN void leds_SetLeftBar   (E_BOOL bButtonPressed, UINT8 u8SpeedLevel);
 
 /* End: Prototype declarations                                                */
 /******************************************************************************/

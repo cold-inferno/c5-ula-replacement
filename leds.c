@@ -31,6 +31,7 @@
 #include "safety.h"
 #include "voltage.h"
 #include "current.h"
+#include "pedelec.h"
 
 #define EXPORT
   #include "leds.h"
@@ -115,6 +116,25 @@
         
 @return void
 */
+/** @brief 2026: TRUE while the motor button is pressed (set from main loop) */
+STATIC VOLATILE E_BOOL mg_bButton    = FALSE;
+
+/** @brief 2026: speed bar level 0..5 or SPEEDBAR_LEVEL_FLASH (from main loop)*/
+STATIC VOLATILE UINT8  mg_u8SpeedLvl = 0U;
+
+/**
+@brief  2026: tells the display what the left (current) bar shall show.
+        Called from the main loop; the LED multiplexing itself runs in the
+        timer ISR and must not read the ADC or the speed sensor directly.
+@param  bButtonPressed  TRUE: motor button pressed -> show motor current
+@param  u8SpeedLevel    speed bar level from pedelec_SpeedBarLevel()
+*/
+void leds_SetLeftBar (E_BOOL bButtonPressed, UINT8 u8SpeedLevel)
+{
+  mg_u8SpeedLvl = u8SpeedLevel;
+  mg_bButton    = bButtonPressed;
+}
+
 /* ****************************************************************************/
 void leds_Init (void)
 {
@@ -288,8 +308,29 @@ void leds_ShowCurrent(void)
       ALL_LEDS_OFF();
     }
   }
+  else if(FALSE == mg_bButton)
+  {
+    /* 2026: motor button released -> show the speed, one LED per 5 km/h,
+       top LED flashing above SPEEDBAR_FLASH */
+    UINT8 u8Lvl = mg_u8SpeedLvl;
+    if(u8Lvl >= 1U) { LED1_ON(); } else { LED1_OFF(); }
+    if(u8Lvl >= 2U) { LED2_ON(); } else { LED2_OFF(); }
+    if(u8Lvl >= 3U) { LED3_ON(); } else { LED3_OFF(); }
+    if(u8Lvl >= 4U) { LED4_ON(); } else { LED4_OFF(); }
+    if((u8Lvl == 5U) ||
+       ((u8Lvl == SPEEDBAR_LEVEL_FLASH) &&
+        ((timer_GetSystemTime() & 256UL) == 0UL)))
+    {
+      LED5_ON();
+    }
+    else
+    {
+      LED5_OFF();
+    }
+  }
   else
   {
+    /* motor button pressed -> show the motor current (original behaviour) */
     if(u16Help >= CURR_20A)
     {
       LED5_ON();

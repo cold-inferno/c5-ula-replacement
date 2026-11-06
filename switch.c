@@ -96,7 +96,7 @@ void switch_Init (void)
 E_SWITCH switch_Get (void)
 {
   UINT16 u16Help = adc_Read(ADC_SWITCH);
-  if (u16Help > 0U)
+  if (u16Help > SWITCH_ON_ADC)
   {
     return (ON);
   }

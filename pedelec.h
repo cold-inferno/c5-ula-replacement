@@ -42,6 +42,15 @@
     Safety cut-offs (errors, overcurrent) always act immediately.            */
 #define RELAY_MIN_DWELL_MS   500U
 
+/** @brief Speed per LED of the speed bar, in 10th of km/h (50 = 5 km/h)     */
+#define SPEEDBAR_STEP         50U
+
+/** @brief Above this speed the top LED of the speed bar flashes (10th km/h) */
+#define SPEEDBAR_FLASH       300U
+
+/** @brief Speed bar level meaning "all 5 LEDs on, top LED flashing"         */
+#define SPEEDBAR_LEVEL_FLASH   6U
+
 /* End: define Constants                                                *//*@}*/
 /******************************************************************************/
 
@@ -75,6 +84,7 @@ typedef struct
 EXTERN void   pedelec_Init   (S_PEDELEC_STATE* psState, UINT32 u32Now);
 EXTERN E_BOOL pedelec_Decide (S_PEDELEC_STATE* psState,
                               const S_PEDELEC_INPUT* psIn);
+EXTERN UINT8  pedelec_SpeedBarLevel (UINT32 u32Speed);
 /* End: Prototype declarations                                                */
 /******************************************************************************/
 

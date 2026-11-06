@@ -98,6 +98,25 @@ E_BOOL pedelec_Decide (S_PEDELEC_STATE* psState, const S_PEDELEC_INPUT* psIn)
   return (psState->bMotorOn);
 }
 
+/**
+@brief  Converts the speed into the number of lit LEDs of the speed bar.
+@param  u32Speed  speed in 10th of km/h
+@return 0..5 = number of LEDs lit (one per 5 km/h),
+        SPEEDBAR_LEVEL_FLASH = above 30 km/h (all on, top LED flashing)
+*/
+UINT8 pedelec_SpeedBarLevel (UINT32 u32Speed)
+{
+  if (u32Speed > SPEEDBAR_FLASH)
+  {
+    return (SPEEDBAR_LEVEL_FLASH);
+  }
+  if (u32Speed >= (5UL * SPEEDBAR_STEP))
+  {
+    return (5U);
+  }
+  return ((UINT8)(u32Speed / SPEEDBAR_STEP));
+}
+
 /* End: Global functions                                                *//*@}*/
 /******************************************************************************/
 

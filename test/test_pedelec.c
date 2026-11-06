@@ -167,6 +167,19 @@ static void test_no_max_limit(void)
   CHECK(run(&s, in, 3000U, 4000U) == FALSE, "max 0: still needs pedalling");
 }
 
+static void test_speed_bar(void)
+{
+  CHECK(pedelec_SpeedBarLevel(0U)   == 0U, "speed bar: standing still = no LED");
+  CHECK(pedelec_SpeedBarLevel(49U)  == 0U, "speed bar: 4.9 km/h = no LED");
+  CHECK(pedelec_SpeedBarLevel(50U)  == 1U, "speed bar: 5.0 km/h = 1 LED");
+  CHECK(pedelec_SpeedBarLevel(149U) == 2U, "speed bar: 14.9 km/h = 2 LEDs");
+  CHECK(pedelec_SpeedBarLevel(200U) == 4U, "speed bar: 20.0 km/h = 4 LEDs");
+  CHECK(pedelec_SpeedBarLevel(250U) == 5U, "speed bar: 25.0 km/h = 5 LEDs");
+  CHECK(pedelec_SpeedBarLevel(300U) == 5U, "speed bar: 30.0 km/h = 5 LEDs");
+  CHECK(pedelec_SpeedBarLevel(301U) == SPEEDBAR_LEVEL_FLASH, "speed bar: above 30 km/h = flashing");
+  CHECK(pedelec_SpeedBarLevel(0xFFFFFFFFU) == SPEEDBAR_LEVEL_FLASH, "speed bar: huge value = flashing");
+}
+
 static void test_time_wraparound(void)
 {
   /* system time wraps after ~49.7 days */
@@ -188,6 +201,7 @@ int main(void)
   test_not_pedelec_mode();
   test_small_min_limit();
   test_no_max_limit();
+  test_speed_bar();
   test_time_wraparound();
   printf("%d checks, %d failed\n", g_run, g_failed);
   return g_failed ? 1 : 0;

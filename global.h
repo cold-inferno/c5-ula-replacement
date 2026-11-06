@@ -206,6 +206,11 @@
 #define ADC_VREF            ADC7
 #define ADC_CURRENT         ADC1
 
+/** @brief 2026: ADC value above which the motor button counts as pressed.
+        Pressed: 12 V via 15k/4k7 divider = about 3.8 V = ADC ~770;
+        released: about 0. The original treated any value > 0 as pressed. */
+#define SWITCH_ON_ADC       300U
+
 /******************************************************************************/
 
 /******************************************************************************/
@@ -236,7 +241,7 @@
 
 /** @brief This value defines the firmware version which will be stored in 
     flash memory.                                                             */
-#define FW_VERSION          1200U  // 2026: LiFePO4 + pedelec fixes
+#define FW_VERSION          1201U  // 2026: V1200 LiFePO4 + pedelec, V1201 speed bar
 
 /** @brief This value defines the firmware CRC32 checksum version which will be 
     stored in flash memory.                                                   */
