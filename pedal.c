@@ -66,6 +66,10 @@ STATIC VOLATILE UINT32 mg_u32Rpm;
 
 /** @brief UINT8 variable to keep the number of pedal reed switch magnets */
 STATIC UINT8  mg_u8NumMagnetsPedal  = DEFAULT_MAGNET_NUMBER_PEDAL;
+/** @brief 2026: shortest accepted pulse distance (debounce) in ms           */
+STATIC UINT16 mg_u16MinPeriod       = PEDAL_MIN_PERIOD_MS;
+/** @brief 2026: TRUE after the first valid pedal pulse since power-on       */
+STATIC VOLATILE E_BOOL mg_bSeenPulse = FALSE;
 
 /* End: Local variables                                                 *//*@}*/
 /******************************************************************************/
@@ -96,7 +100,7 @@ STATIC UINT8  mg_u8NumMagnetsPedal  = DEFAULT_MAGNET_NUMBER_PEDAL;
 @return void
 */
 /* ****************************************************************************/
-ISR (SIG_INTERRUPT1)
+ISR (INT1_vect)
 {
   LOCAL_STATIC  UINT32  u32CurrentTime;
                 UINT32  u32DiffTime;
@@ -105,10 +109,15 @@ ISR (SIG_INTERRUPT1)
   
   u32CurrentTime = timer_GetSystemTime();
   u32DiffTime = u32CurrentTime - mg_u32TickTime;
-  if(0UL != u32DiffTime)
+  /* 2026: ignore contact bounce of the reed switch */
+  if(u32DiffTime >= mg_u16MinPeriod)
   {
     mg_u32TickTime = u32CurrentTime;
-    mg_u32Rpm = ONE_MINUTE_MS / u32DiffTime / mg_u8NumMagnetsPedal;
+    if(FALSE != mg_bSeenPulse)
+    {
+      mg_u32Rpm = ONE_MINUTE_MS / u32DiffTime / mg_u8NumMagnetsPedal;
+    }
+    mg_bSeenPulse = TRUE;
   }
   
   PEDAL_INT_ENABLE();
@@ -132,6 +141,12 @@ ISR (SIG_INTERRUPT1)
 void pedal_Init (void)
 {
   mg_u8NumMagnetsPedal  = memory_Get()->u8NumMagnetsPedal;
+  if((0U == mg_u8NumMagnetsPedal) || (0xFFU == mg_u8NumMagnetsPedal))
+  {
+    mg_u8NumMagnetsPedal = 1U;  // 2026: avoid division by 0 / erased EEPROM
+  }
+  mg_u16MinPeriod = PEDAL_MIN_PERIOD_MS / mg_u8NumMagnetsPedal;
+  mg_bSeenPulse   = FALSE;
   
   INT1_DDR  &= ~(1U << INT1_BIT);   /* set ext. interrupt pin as input pin */
   
@@ -172,17 +187,22 @@ UINT32 pedal_GetTimeout (void)
   UINT32 u32SysTime;
   UINT32 u32TickTime;
   UINT32 u32Ret;
-  
+  E_BOOL bSeen;
+
   u32SysTime = timer_GetSystemTime();
-  asm("nop");
   cli();
   u32TickTime = mg_u32TickTime;
+  bSeen       = mg_bSeenPulse;
   sei();
-  
+
   u32Ret = u32SysTime - u32TickTime;
-  if(u32Ret > PEDAL_TIMEOUT)
+  /* 2026: before the first pulse after power-on the driver is not pedalling
+     (previously the first 2 seconds after power-on counted as pedalling) */
+  if((u32Ret > PEDAL_TIMEOUT) || (FALSE == bSeen))
   {
+    cli();
     mg_u32Rpm = 0UL;
+    sei();
     u32Ret = PEDAL_TIMEOUT;
   }
   

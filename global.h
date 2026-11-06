@@ -42,9 +42,63 @@
         activate the tacho reed switch.                                                    */
 #define DEFAULT_MAGNET_NUMBER_TACHO   1U
 
-/** @brief  This value defines the default number of magnets attached to 
+/** @brief  This value defines the default number of magnets attached to
         activate the pedal reed switch.                                                    */
 #define DEFAULT_MAGNET_NUMBER_PEDAL   1U
+
+/******************************************************************************/
+/* BATTERY PROFILE (added 2026)                                               */
+/*                                                                            */
+/* Select exactly one battery type (or pass -DBATTERY_... to make):           */
+/*   BATTERY_LIFEPO4    12.8 V LiFePO4 pack (4 cells in series, with BMS)     */
+/*   BATTERY_LEAD_ACID  original 12 V lead-acid behaviour (VREF pot cut-off)  */
+/******************************************************************************/
+#if !defined(BATTERY_LIFEPO4) && !defined(BATTERY_LEAD_ACID)
+#define BATTERY_LIFEPO4
+#endif
+
+/** @brief  Converts millivolts to the battery voltage ADC value.
+        Derived from the original calibration constants (10.0 V = 448,
+        12.0 V = 544, i.e. 48 counts per volt). Check it against a multimeter:
+        the serial output field VOLT shows the raw ADC value.                 */
+#define VOLT_ADC(mV)    ((UINT16)(((UINT32)(mV) * 48UL) / 1000UL - 32UL))
+
+#if defined(BATTERY_LIFEPO4)
+/* LiFePO4 voltages are evaluated while the motor relay has been off for a
+   few seconds ("resting" voltage), because the pack voltage curve is very
+   flat and the voltage drop under motor load would hide the state of charge.
+   Typical resting voltages of a 12.8 V pack: 13.3 V ~90 %, 13.15 V ~55 %,
+   13.05 V ~35 %, 12.9 V ~20 %, 12.5 V ~14 %, 12.0 V ~9 %.                    */
+  #define BATTERY_NAME          "LiFePO4"
+  /** @brief LED bar thresholds (resting voltage), LED1 = lowest              */
+  #define VOLT_LED1             VOLT_ADC(12500U)
+  #define VOLT_LED2             VOLT_ADC(12900U)
+  #define VOLT_LED3             VOLT_ADC(13050U)
+  #define VOLT_LED4             VOLT_ADC(13150U)
+  #define VOLT_LED5             VOLT_ADC(13300U)
+  /** @brief Low battery warning below / cleared above (resting voltage)      */
+  #define VOLT_WARN_ON          VOLT_ADC(12800U)
+  #define VOLT_WARN_OFF         VOLT_ADC(12900U)
+  /** @brief Motor cut-off below / re-enabled above (resting voltage)         */
+  #define VOLT_ERR_ON           VOLT_ADC(12000U)
+  #define VOLT_ERR_OFF          VOLT_ADC(12300U)
+  /** @brief Motor cut-off if the 20 s average under load drops below this.
+      Protects the cells and avoids a sudden BMS shutdown while driving.     */
+  #define VOLT_ERR_LOADED       VOLT_ADC(11000U)
+  /** @brief Relay-off time before a reading counts as resting voltage, in
+      512 ms steps (6 = about 3 s)                                            */
+  #define VOLT_REST_SETTLE      6U
+#else
+  #define BATTERY_NAME          "lead-acid"
+  /* original lead-acid behaviour: LED bar from the 20 s average,
+     cut-off adjustable with the VREF potentiometer in the POD */
+  #define VOLT_LED1             VOLT_ADC(10000U)
+  #define VOLT_LED2             VOLT_ADC(10500U)
+  #define VOLT_LED3             VOLT_ADC(11000U)
+  #define VOLT_LED4             VOLT_ADC(11500U)
+  #define VOLT_LED5             VOLT_ADC(12000U)
+  #define VOLT_REST_SETTLE      6U
+#endif
 /******************************************************************************/
 
 /******************************************************************************/
@@ -169,24 +223,24 @@
 #define MAX_CURRENT         523U
 
 /** @brief  This value defines the fan activation temperature                 */
-#define VALUE_TEMP_FAN        45U // 45°C
+#define VALUE_TEMP_FAN        45U // 45Â°C
 
 /** @brief  This value defines temperature warning threshold                  */
-#define VALUE_TEMP_WARN       70U // 70°C
+#define VALUE_TEMP_WARN       70U // 70Â°C
 
 /** @brief  This value defines temperature error threshold                    */
-#define VALUE_TEMP_ERROR      80U // 80°C
+#define VALUE_TEMP_ERROR      80U // 80Â°C
 
 /** @brief This value is just a difinition for one minute in milliseconds     */
 #define ONE_MINUTE_MS       ((UINT32)60000UL)
 
 /** @brief This value defines the firmware version which will be stored in 
     flash memory.                                                             */
-#define FW_VERSION          1172U
+#define FW_VERSION          1200U  // 2026: LiFePO4 + pedelec fixes
 
 /** @brief This value defines the firmware CRC32 checksum version which will be 
     stored in flash memory.                                                   */
-#define APPLICATION_CRC     0x5C751A3FUL
+#define APPLICATION_CRC     0xFFFFFFFFUL // patched after build by tools/fwcrc.py
 
 #define CRC32POLY           0xEDB88320UL
 

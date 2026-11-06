@@ -22,6 +22,7 @@
 
 #include "adc.h"
 #include "safety.h"
+#include "relay.h"
 
 #define EXPORT
   #include "voltage.h"
@@ -75,6 +76,13 @@ STATIC UINT16 mg_u16Avg                 = 0U;
 /** @brief UINT8 variable to keep the ring array index position.              */
 STATIC UINT8  mg_u8Idx                  = 0U;
 
+/** @brief 2026: resting battery voltage (ADC value * 16, filtered), updated
+    only while the motor relay has been off for VOLT_REST_SETTLE periods.     */
+STATIC UINT16 mg_u16Rest16              = 0U;
+
+/** @brief 2026: number of 512 ms periods the relay has been off              */
+STATIC UINT8  mg_u8RelayOffCnt          = 0U;
+
 /* End: Local variables                                                 *//*@}*/
 /******************************************************************************/
 
@@ -108,11 +116,19 @@ STATIC UINT8  mg_u8Idx                  = 0U;
 @return void
 */
 /* ****************************************************************************/
+/* 2026: reads the VREF potentiometer. The original formula underflowed when
+   the pot was set below ADC 695, which caused a permanent voltage error. */
+STATIC UINT16 mg_ReadRef (void)
+{
+  UINT16 u16Adc = adc_Read(ADC_VREF);
+  return ((u16Adc > 695U) ? (UINT16)((u16Adc - 695U) * 26U / 10U) : 0U);
+}
+
 void voltage_Init (void)
 {
   UINT16 u16Help = adc_Read(ADC_VOLTAGE);
   
-  mg_u16Ref   = (adc_Read(ADC_VREF)-695U) * 26/10;
+  mg_u16Ref   = mg_ReadRef();
   mg_u16Value = u16Help;
   
   for(UINT8 i=0U; i<AVG_COUNT; i++)
@@ -121,6 +137,9 @@ void voltage_Init (void)
   }
   mg_u16Avg = u16Help;
   mg_u8Idx = 0U;
+  /* the relay is off at power-on: the first reading is a resting voltage */
+  mg_u16Rest16     = (UINT16)(u16Help * 16U);
+  mg_u8RelayOffCnt = VOLT_REST_SETTLE;
 }
 
 
@@ -136,7 +155,7 @@ void voltage_Init (void)
 /* ****************************************************************************/
 void voltage_Update (void)
 {
-  mg_u16Ref   = (adc_Read(ADC_VREF)-695U) * 26/10;
+  mg_u16Ref   = mg_ReadRef();
   mg_u16Value = adc_Read(ADC_VOLTAGE);
 }
 
@@ -181,7 +200,48 @@ void voltage_UpdateAvg (void)
   }
   u16Help /= AVG_COUNT;
   mg_u16Avg = u16Help;
-  
+
+#if defined(BATTERY_LIFEPO4)
+  /* resting voltage: only while the motor relay has been off long enough */
+  if(FALSE != relay_IsEnabled())
+  {
+    mg_u8RelayOffCnt = 0U;
+  }
+  else if(mg_u8RelayOffCnt < VOLT_REST_SETTLE)
+  {
+    mg_u8RelayOffCnt++;
+  }
+  else
+  {
+    /* first-order low-pass filter (ADC*16), time constant 8 * 512 ms */
+    UINT16 u16Sample = mg_au16Data[(mg_u8Idx + AVG_COUNT - 1U) % AVG_COUNT];
+    mg_u16Rest16 = (UINT16)(mg_u16Rest16 - (mg_u16Rest16 / 8U) + (u16Sample * 2U));
+  }
+
+  {
+    UINT16 u16Rest = voltage_GetRest();
+
+    /* low battery warning with hysteresis */
+    if(u16Rest < VOLT_WARN_ON)
+    {
+      safety_SetCondition(COND_VOLT_WARN);
+    }
+    else if(u16Rest >= VOLT_WARN_OFF)
+    {
+      safety_ClearCondition(COND_VOLT_WARN);
+    }
+
+    /* motor cut-off: battery empty, or voltage collapsing under load */
+    if((u16Rest < VOLT_ERR_ON) || (mg_u16Avg < VOLT_ERR_LOADED))
+    {
+      safety_SetCondition(COND_VOLT_ERR);
+    }
+    else if(u16Rest >= VOLT_ERR_OFF)
+    {
+      safety_ClearCondition(COND_VOLT_ERR);
+    }
+  }
+#else
   if(mg_u16Avg < mg_u16Ref)
   {
     safety_SetCondition(COND_VOLT_ERR);
@@ -190,6 +250,23 @@ void voltage_UpdateAvg (void)
   {
     safety_ClearCondition(COND_VOLT_ERR);
   }
+#endif
+}
+
+/** @brief 2026: returns the resting battery voltage as ADC value.            */
+UINT16 voltage_GetRest (void)
+{
+  return ((UINT16)((mg_u16Rest16 + 8U) / 16U));
+}
+
+/** @brief 2026: returns the value shown on the LED voltage bar.              */
+UINT16 voltage_GetDisplay (void)
+{
+#if defined(BATTERY_LIFEPO4)
+  return (voltage_GetRest());
+#else
+  return (mg_u16Avg);
+#endif
 }
 
 

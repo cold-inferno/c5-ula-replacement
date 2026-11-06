@@ -31,7 +31,9 @@
 
 /** @brief This macro returns the current driving speed based on the wheel RPM 
     and the setting for wheel circumference in 10th of km/h                   */
-#define SPEED_GET() (speed_GetRpm() * WHEEL_SIZE * 6U / 10000U) // 10th of km/h
+/* 2026: speed now uses the wheel size configured in EEPROM (was the fixed
+   WHEEL_SIZE default, so a different wheel gave wrong pedelec limits). */
+#define SPEED_GET() speed_GetSpeed() // 10th of km/h
 
 /* End: Macro definitions (#define)                                     *//*@}*/
 /******************************************************************************/
@@ -52,6 +54,7 @@
 EXTERN void   speed_Init          (void);
 EXTERN UINT32 speed_GetRpm        (void);
 EXTERN UINT32 speed_GetDistance   (void);
+EXTERN UINT32 speed_GetSpeed      (void);
 EXTERN void   speed_CheckTimeout  (UINT32 u32SystemTime);
 
 /* End: Prototype declarations                                                */

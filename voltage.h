@@ -44,6 +44,8 @@ EXTERN void   voltage_UpdateAvg (void);
 EXTERN UINT16 voltage_GetValue  (void);
 EXTERN UINT16 voltage_GetAvg    (void);
 EXTERN UINT16 voltage_GetRef    (void);
+EXTERN UINT16 voltage_GetRest   (void);
+EXTERN UINT16 voltage_GetDisplay(void);
 /* End: Prototype declarations                                                */
 /******************************************************************************/
 

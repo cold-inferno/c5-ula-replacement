@@ -1,0 +1,707 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>C5 ULA Configurator</title>
+<style>
+:root {
+  --bg: #f6f6f4; --panel: #ffffff; --text: #1d1d1b; --muted: #6b6b66; --line: #deded8;
+  --accent: #c8102e; --accent-ink: #ffffff; --ok: #1f7a3a; --warn: #a15c00; --err: #b3261e;
+  --chip: #efefea; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141413; --panel: #1e1e1c; --text: #ecece8; --muted: #a0a09a; --line: #34342f;
+    --accent: #ff4d5e; --accent-ink: #141413; --ok: #5cc27a; --warn: #f0a53a; --err: #ff6b62; --chip: #2a2a27;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #141413; --panel: #1e1e1c; --text: #ecece8; --muted: #a0a09a; --line: #34342f;
+  --accent: #ff4d5e; --accent-ink: #141413; --ok: #5cc27a; --warn: #f0a53a; --err: #ff6b62; --chip: #2a2a27;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 16px;
+  border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 5; }
+header h1 { font-size: 17px; margin: 0; letter-spacing: .2px; }
+header h1 span { color: var(--accent); }
+.spacer { flex: 1; }
+.pill { font-size: 13px; padding: 3px 10px; border-radius: 99px; background: var(--chip); color: var(--muted); }
+.pill.ok { color: var(--ok); } .pill.boot { color: var(--warn); } .pill.err { color: var(--err); }
+button { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--text);
+  padding: 7px 14px; border-radius: 8px; cursor: pointer; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+main { max-width: 980px; margin: 0 auto; padding: 16px; }
+nav { display: flex; gap: 4px; margin-bottom: 14px; flex-wrap: wrap; }
+nav button { border-radius: 8px; background: transparent; border-color: transparent; color: var(--muted); }
+nav button[aria-selected="true"] { background: var(--panel); border-color: var(--line); color: var(--text); font-weight: 600; }
+section.tab { display: none; } section.tab.active { display: block; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+.card h2 { font-size: 15px; margin: 0 0 10px; }
+.muted { color: var(--muted); } .small { font-size: 13px; }
+.banner { border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; border: 1px solid var(--line); background: var(--panel); }
+.banner.err { border-color: var(--err); } .banner.warn { border-color: var(--warn); }
+.banner b { display: block; margin-bottom: 2px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.tile { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.tile .k { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+.tile .v { font-size: 26px; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.tile .v small { font-size: 14px; font-weight: 500; color: var(--muted); margin-left: 3px; }
+.tile .s { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.flags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.flag { font-size: 12px; padding: 2px 8px; border-radius: 99px; background: var(--chip); }
+.flag.warn { color: var(--warn); } .flag.err { color: var(--err); } .flag.ok { color: var(--ok); }
+form.settings { display: grid; grid-template-columns: 1fr; gap: 12px; }
+.row { display: grid; grid-template-columns: 220px 1fr; gap: 10px; align-items: center; }
+.row label { font-weight: 550; }
+.row .hint { grid-column: 2; font-size: 12px; color: var(--muted); margin-top: -6px; }
+input[type=number] { font: inherit; width: 120px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--bg); color: var(--text); }
+input:disabled { opacity: .45; }
+.unit { color: var(--muted); margin-left: 6px; }
+.switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.steps { margin: 0; padding-left: 20px; } .steps li { margin: 3px 0; }
+progress { width: 100%; height: 14px; accent-color: var(--accent); }
+pre.log { font: 12px/1.5 var(--mono); background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+  padding: 10px; max-height: 360px; overflow: auto; white-space: pre-wrap; margin: 0; }
+code, .mono { font-family: var(--mono); font-size: 13px; }
+dl.kv { display: grid; grid-template-columns: 160px 1fr; gap: 4px 10px; margin: 0; }
+dl.kv dt { color: var(--muted); } dl.kv dd { margin: 0; font-variant-numeric: tabular-nums; }
+.ok-t { color: var(--ok); } .warn-t { color: var(--warn); } .err-t { color: var(--err); }
+@media (max-width: 620px) {
+  .row { grid-template-columns: 1fr; } .row .hint { grid-column: 1; margin-top: -8px; }
+  dl.kv { grid-template-columns: 120px 1fr; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1><span>C5</span> ULA Configurator</h1>
+  <span id="status" class="pill">not connected</span>
+  <span class="spacer"></span>
+  <button id="btnDemo" title="Simulated C5 for trying out the tool without hardware">Demo</button>
+  <button id="btnConnect" class="primary">Connect</button>
+</header>
+
+<main>
+  <div id="noSerial" class="banner err" hidden>
+    <b>This browser can't talk to serial ports.</b>
+    Use Chrome, Edge or another Chromium-based browser on a computer (Web Serial). Safari and Firefox don't support it.
+    The Demo button still works here.
+  </div>
+  <div id="demoBanner" class="banner warn" hidden>
+    <b>Demo mode</b> You're connected to a simulated C5, not real hardware.
+  </div>
+
+  <nav role="tablist">
+    <button role="tab" data-tab="live" aria-selected="true">Live data</button>
+    <button role="tab" data-tab="settings" aria-selected="false">Settings</button>
+    <button role="tab" data-tab="firmware" aria-selected="false">Firmware update</button>
+    <button role="tab" data-tab="log" aria-selected="false">Log</button>
+  </nav>
+
+  <!-- LIVE -->
+  <section class="tab active" id="tab-live">
+    <div class="tiles">
+      <div class="tile"><div class="k">Speed</div><div class="v" id="tSpeed">–<small>km/h</small></div><div class="s" id="tDist">trip –</div></div>
+      <div class="tile"><div class="k">Cadence</div><div class="v" id="tRpm">–<small>rpm</small></div><div class="s" id="tPedal">–</div></div>
+      <div class="tile"><div class="k">Battery now</div><div class="v" id="tVolt">–<small>V</small></div><div class="s" id="tVoltRaw">ADC –</div></div>
+      <div class="tile"><div class="k">Battery resting</div><div class="v" id="tRest">–<small>V</small></div><div class="s" id="tRestRaw">used for the LED bar</div></div>
+      <div class="tile"><div class="k">Motor current</div><div class="v" id="tCurr">–<small>A</small></div><div class="s" id="tCurrRaw">approx.</div></div>
+      <div class="tile"><div class="k">Motor relay</div><div class="v" id="tRelay">–</div><div class="s" id="tSwitch">button –</div></div>
+      <div class="tile"><div class="k">Motor temp.</div><div class="v" id="tTemp">–<small>°C</small></div><div class="s" id="tTempRaw">ADC –</div></div>
+      <div class="tile"><div class="k">Status</div><div class="flags" id="tFlags"><span class="flag">–</span></div><div class="s" id="tTime">uptime –</div></div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <h2>Device</h2>
+      <dl class="kv">
+        <dt>Firmware</dt><dd id="dFw">–</dd>
+        <dt>Battery profile</dt><dd id="dBat">–</dd>
+        <dt>Firmware CRC</dt><dd id="dCrc">–</dd>
+        <dt>Last data line</dt><dd class="mono small" id="dRaw">–</dd>
+      </dl>
+      <p class="small muted" style="margin-bottom:0">The firmware prints this data 4 times per second while the C5 is switched on.
+        Voltages are calculated from the raw ADC values (48 counts per volt). Compare "Battery now" with a multimeter at the battery to check the calibration.</p>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="tab" id="tab-settings">
+    <div class="card">
+      <h2>Configuration mode</h2>
+      <p class="small" style="margin-top:0">Settings can only be read and written by the bootloader, which listens for 2 seconds after the C5 is switched on.</p>
+      <ol class="steps small">
+        <li>Connect the USB-serial adapter and click <b>Connect</b>.</li>
+        <li>Click <b>Enter configuration mode</b>.</li>
+        <li>Switch the C5 off and on again within 20 seconds.</li>
+      </ol>
+      <div class="actions">
+        <button id="btnEnter" class="primary" disabled>Enter configuration mode</button>
+        <button id="btnStart" disabled title="Leave configuration mode and start the normal firmware">Start C5</button>
+        <span id="bootInfo" class="small muted" style="align-self:center"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Settings</h2>
+      <form class="settings" id="form" onsubmit="return false">
+        <div class="row"><label for="fPedelec">Pedal assist (pedelec)</label>
+          <label class="switch"><input type="checkbox" id="fPedelec"> <span>motor only while pedalling</span></label></div>
+        <div class="row"><label for="fWheel">Wheel circumference</label>
+          <div><input type="number" id="fWheel" min="300" max="3000" step="1"><span class="unit">mm</span></div>
+          <div class="hint">Of the wheel with the speed sensor magnet. 1280 mm = Schwalbe Big Apple.</div></div>
+        <div class="row"><label for="fMin">Minimum speed</label>
+          <div><input type="number" id="fMin" min="0" max="20" step="0.1"><span class="unit">km/h</span></div>
+          <div class="hint">The motor joins in from this speed. 0 = from standstill.</div></div>
+        <div class="row"><label for="fMaxOn">Maximum speed cut-off</label>
+          <label class="switch"><input type="checkbox" id="fMaxOn"> <span>switch the motor off above:</span></label></div>
+        <div class="row"><label for="fMax">Maximum speed</label>
+          <div><input type="number" id="fMax" min="5" max="60" step="0.1"><span class="unit">km/h</span></div>
+          <div class="hint" id="maxHint">25 km/h is the legal limit for a pedelec in the EU.</div></div>
+        <div class="row"><label for="fFan">Fan switch-on temperature</label>
+          <div><input type="number" id="fFan" min="20" max="80" step="1"><span class="unit">°C</span></div></div>
+        <div class="row"><label for="fMagT">Magnets on the wheel</label>
+          <div><input type="number" id="fMagT" min="1" max="16" step="1"></div></div>
+        <div class="row"><label for="fMagP">Magnets on the pedals</label>
+          <div><input type="number" id="fMagP" min="1" max="16" step="1"></div></div>
+      </form>
+      <div id="formMsg" class="small" style="margin-top:10px"></div>
+      <div class="actions">
+        <button id="btnRead" disabled>Read from C5</button>
+        <button id="btnWrite" class="primary" disabled>Write to C5</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- FIRMWARE -->
+  <section class="tab" id="tab-firmware">
+    <div class="card">
+      <h2>Firmware file</h2>
+      <input type="file" id="fileHex" accept=".hex">
+      <dl class="kv" style="margin-top:12px">
+        <dt>File</dt><dd id="hName">–</dd>
+        <dt>Version</dt><dd id="hVer">–</dd>
+        <dt>Size</dt><dd id="hSize">–</dd>
+        <dt>Checksum</dt><dd id="hCrc">–</dd>
+      </dl>
+    </div>
+    <div class="card">
+      <h2>Upload</h2>
+      <p class="small" style="margin-top:0">Needs configuration mode (see Settings). Your settings are kept. If the upload is interrupted, the bootloader stays intact: just enter configuration mode and upload again.</p>
+      <progress id="prog" max="112" value="0"></progress>
+      <div class="actions">
+        <button id="btnFlash" class="primary" disabled>Upload firmware</button>
+        <span id="flashMsg" class="small muted" style="align-self:center"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- LOG -->
+  <section class="tab" id="tab-log">
+    <div class="card">
+      <h2>Log</h2>
+      <pre class="log" id="log"></pre>
+      <div class="actions"><button id="btnClearLog">Clear</button></div>
+    </div>
+  </section>
+</main>
+
+<script>
+'use strict';
+/* ---------------------------------------------------------------------------
+   Protocol of the ULA replacement bootloader (bootloader/bootload.c, V1042):
+   after power-on it waits 2 s for 'e'; then single-byte commands:
+     e -> 'B'                 v -> BL version (hi, lo)    g -> FW version (hi, lo)
+     r lo hi -> 1 byte        w lo hi val -> 'D'          (EEPROM, offset in settings struct)
+     f, then 112 x (64 bytes + 8-bit sum) -> 'O' per page ('E' on bad sum), then 'D'
+     s -> 'S' and start firmware      x -> reset
+   Settings struct (packed, little endian): 0 pedelec(u8) 1 wheel(u16) 3 max(u16)
+     5 min(u16) 7 fanTemp(u16) 9 magnetsWheel(u8) 10 magnetsPedal(u8)
+   ------------------------------------------------------------------------- */
+const PAGES = 112, PAGE = 64, APP_END = 0x1C00, MEMPOS_VER = 0x1BFA, MEMPOS_CRC = 0x1BFC;
+const FW_NO_MAX_SUPPORT = 1200; // firmware versions >= this accept max speed 0 = no limit
+
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const logEl = $('log');
+function log(msg) {
+  const t = new Date().toLocaleTimeString();
+  logEl.textContent += `[${t}] ${msg}\n`;
+  if (logEl.textContent.length > 60000) logEl.textContent = logEl.textContent.slice(-40000);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+/* ---------------- conversions (mirroring the firmware) ---------------- */
+const adcToVolt = a => (a + 32) / 48;                    // global.h VOLT_ADC()
+const adcToAmp  = a => a * 140 / 523;                    // MAX_CURRENT 523 = 140 A
+function adcToCelsius(adc) {                             // temp.c temp_GetCelsius()
+  if (!adc) return 85;
+  const ntc = Math.floor(1024 * 1100 / adc) - 1100;
+  const table = [[12500,0],[9000,5],[7500,10],[6000,15],[4700,20],[3800,25],[3300,30],[2500,35],
+                 [2000,40],[1700,45],[1200,50],[1000,55],[800,60],[900,65],[800,70],[600,75],[500,80]];
+  for (const [lim, deg] of table) if (ntc >= lim) return deg;
+  return 85;
+}
+const COND = [[1,'voltage warning','warn'],[2,'current warning','warn'],[4,'temperature warning','warn'],
+              [8,'voltage error','err'],[16,'current error','err'],[32,'temperature error','err']];
+
+/* ---------------- firmware CRC (safety.c safety_MemoryTest) ---------------- */
+function fwCrc(mem) {
+  let crc = 0xFFFFFFFF >>> 0;
+  for (let a = 0; a < MEMPOS_CRC; a++) {
+    let b = mem[a];
+    for (let i = 0; i < 8; i++) {
+      if (((crc >>> 31) & 1) !== (b & 1)) crc = ((crc << 1) ^ 0xEDB88320) >>> 0;
+      else crc = (crc << 1) >>> 0;
+      b >>= 1;
+    }
+  }
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+function parseHex(text) {
+  const mem = new Uint8Array(APP_END).fill(0xFF);
+  let base = 0, top = 0, count = 0;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (line[0] !== ':') throw new Error('not an Intel HEX file');
+    const bytes = line.slice(1).match(/../g).map(h => parseInt(h, 16));
+    if (bytes.reduce((s, b) => s + b, 0) & 0xFF) throw new Error('checksum error in HEX line: ' + line);
+    const n = bytes[0], addr = (bytes[1] << 8) | bytes[2], type = bytes[3];
+    if (type === 0) {
+      for (let i = 0; i < n; i++) {
+        const a = base + addr + i;
+        if (a >= APP_END) throw new Error(`address 0x${a.toString(16)} is in the bootloader area: this is not an application firmware file`);
+        mem[a] = bytes[4 + i]; top = Math.max(top, a + 1); count++;
+      }
+    } else if (type === 2) base = ((bytes[4] << 8) | bytes[5]) << 4;
+    else if (type === 4) base = ((bytes[4] << 8) | bytes[5]) << 16;
+    else if (type === 1) break;
+  }
+  if (!count) throw new Error('the file contains no data');
+  const version = mem[MEMPOS_VER] | (mem[MEMPOS_VER + 1] << 8);
+  const stored = (mem[MEMPOS_CRC] | (mem[MEMPOS_CRC + 1] << 8) | (mem[MEMPOS_CRC + 2] << 16) | (mem[MEMPOS_CRC + 3] << 24)) >>> 0;
+  const codeEnd = (() => { for (let a = MEMPOS_VER - 1; a >= 0; a--) if (mem[a] !== 0xFF) return a + 1; return 0; })();
+  return { mem, version, stored, computed: fwCrc(mem), codeEnd };
+}
+
+/* ---------------- transport: real Web Serial port or simulated C5 ---------------- */
+class SerialTransport {
+  constructor(port) { this.port = port; this.onData = null; this.onClose = null; this.reading = false; }
+  async open() {
+    await this.port.open({ baudRate: 9600, dataBits: 8, stopBits: 1, parity: 'none' });
+    this.writer = this.port.writable.getWriter();
+    this.reading = true;
+    (async () => {
+      while (this.reading && this.port.readable) {
+        this.reader = this.port.readable.getReader();
+        try {
+          for (;;) {
+            const { value, done } = await this.reader.read();
+            if (done) break;
+            if (value && this.onData) this.onData(value);
+          }
+        } catch (e) { log('read error: ' + e.message); }
+        finally { this.reader.releaseLock(); }
+        if (!this.reading) break;
+      }
+      if (this.onClose) this.onClose();
+    })();
+  }
+  async write(bytes) { await this.writer.write(bytes); }
+  async close() {
+    this.reading = false;
+    try { await this.reader?.cancel(); } catch (e) {}
+    try { this.writer?.releaseLock(); } catch (e) {}
+    try { await this.port.close(); } catch (e) {}
+  }
+}
+
+class MockC5 {
+  /* Simulates the ULA replacement: bootloader + firmware V1200 telemetry */
+  constructor() {
+    this.onData = null; this.onClose = null;
+    this.eeprom = [1, 0x00, 0x05, 0xFA, 0x00, 0x1E, 0x00, 0x2D, 0x00, 1, 1];
+    this.fwVersion = 1200; this.state = 'app'; this.flashBuf = null; this.t0 = performance.now(); this.dist = 0;
+  }
+  async open() { this.emitText('ULA replacement V1200\n\nCRC: 0xA164FAFF\n\nBAT: LiFePO4\n'); this.startApp(false); }
+  async close() { clearInterval(this.timer); clearTimeout(this.bootTimer); if (this.onClose) this.onClose(); }
+  emit(bytes) { setTimeout(() => this.onData && this.onData(Uint8Array.from(bytes)), 3); }
+  emitText(s) { this.emit([...s.replace(/\n/g, '\r\n')].map(c => c.charCodeAt(0))); }
+  u16(o) { return this.eeprom[o] | (this.eeprom[o + 1] << 8); }
+  startApp(banner = true) {
+    this.state = 'app'; clearInterval(this.timer);
+    if (banner) this.emitText(`ULA replacement V${this.fwVersion}\n\nCRC: 0xA164FAFF\n\nBAT: LiFePO4\n`);
+    this.t0 = performance.now();
+    this.timer = setInterval(() => this.telemetry(), 256);
+  }
+  powerCycle() {  // what the user does by switching the C5 off and on
+    clearInterval(this.timer); this.state = 'off';
+    setTimeout(() => {
+      this.state = 'bootwait';
+      this.bootTimer = setTimeout(() => { if (this.state === 'bootwait') { this.emit([0x53]); this.startApp(); } }, 2000);
+    }, 600);
+  }
+  telemetry() {
+    const t = (performance.now() - this.t0) / 1000;
+    const speed = Math.max(0, Math.round(140 + 130 * Math.sin(t / 6)));          // 0.1 km/h
+    const pedalling = speed > 10 && Math.sin(t / 2.3) > -0.6;
+    const rpm = pedalling ? Math.round(55 + 10 * Math.sin(t)) : 0;
+    const min = this.u16(5), max = this.u16(3);
+    const ena = this.eeprom[0] ? (pedalling && speed >= min && (max === 0 || speed <= max)) : true;
+    const curr = ena ? Math.round(110 + 25 * Math.sin(t * 1.7)) : 0;
+    const volt = Math.round(601 - (ena ? curr * 0.12 : 0));
+    this.dist += speed / 36 * 256;                                                 // mm
+    const f = [Math.round(this.dist), speed, rpm, pedalling ? 300 : 2000, ena ? 512 : 0, 380,
+               volt, 0, curr, ena ? 1 : 0, 0, Math.round(t * 1000), 601];
+    this.emitText('#' + f.join('|') + '|\n');
+  }
+  async write(bytes) {
+    for (const b of bytes) this.rx(b);
+  }
+  rx(b) {
+    const c = String.fromCharCode(b);
+    if (this.state === 'bootwait') { if (c === 'e') { this.state = 'boot'; clearTimeout(this.bootTimer); this.emit([0x42]); } return; }
+    if (this.state === 'flash') {
+      this.flashBuf.push(b);
+      if (this.flashBuf.length === PAGE + 1) {
+        const sum = this.flashBuf.slice(0, PAGE).reduce((s, x) => s + x, 0) & 0xFF;
+        if (sum !== this.flashBuf[PAGE]) { this.emit([0x45, 0x44]); this.state = 'boot'; return; }
+        if (this.flashPage === Math.floor(MEMPOS_VER / PAGE)) {
+          const o = MEMPOS_VER % PAGE; this.fwVersion = this.flashBuf[o] | (this.flashBuf[o + 1] << 8);
+        }
+        this.flashBuf = []; this.flashPage++;
+        setTimeout(() => this.emit(this.flashPage === PAGES ? [0x4F, 0x44] : [0x4F]), 6);
+        if (this.flashPage === PAGES) this.state = 'boot';
+      }
+      return;
+    }
+    if (this.state === 'arg') { this.args.push(b); if (this.args.length === this.need) this.finish(); return; }
+    if (this.state !== 'boot') return;   // firmware ignores input
+    switch (c) {
+      case 'e': this.emit([0x42]); break;
+      case 'v': this.emit([1042 >> 8, 1042 & 0xFF]); break;
+      case 'g': this.emit([this.fwVersion >> 8, this.fwVersion & 0xFF]); break;
+      case 'r': this.cmd = 'r'; this.need = 2; this.args = []; this.state = 'arg'; break;
+      case 'w': this.cmd = 'w'; this.need = 3; this.args = []; this.state = 'arg'; break;
+      case 'f': this.state = 'flash'; this.flashBuf = []; this.flashPage = 0; break;
+      case 's': this.emit([0x53]); this.startApp(); break;
+      case 'x': this.powerCycle(); break;
+      default: this.emit([0x3F]);
+    }
+  }
+  finish() {
+    const off = this.args[0] | (this.args[1] << 8);
+    this.state = 'boot';
+    if (this.cmd === 'r') this.emit([off < this.eeprom.length ? this.eeprom[off] : 0xFF]);
+    else { if (off < this.eeprom.length) this.eeprom[off] = this.args[2]; setTimeout(() => this.emit([0x44]), 4); }
+  }
+}
+
+/* ---------------- link: byte queue + text line parser ---------------- */
+const link = {
+  t: null, mode: 'none', /* none | app | connecting | boot */
+  q: [], waiter: null, line: '', bootVersion: 0, fwVersion: 0,
+  onBytes(bytes) {
+    for (const b of bytes) {
+      if (this.mode === 'boot' || this.mode === 'connecting') {
+        this.q.push(b);
+        if (this.waiter) { const w = this.waiter; this.waiter = null; w(); }
+      } else {
+        this.onChar(b);
+      }
+    }
+  },
+  onChar(b) {
+    if (b === 10) { const l = this.line.replace(/\r/g, ''); this.line = ''; if (l) handleLine(l); }
+    else if (this.line.length < 300) this.line += String.fromCharCode(b);
+  },
+  flush() { this.q = []; },
+  async readByte(timeout = 1000) {
+    const until = performance.now() + timeout;
+    while (!this.q.length) {
+      const left = until - performance.now();
+      if (left <= 0) throw new Error('no answer from the C5 (timeout)');
+      await new Promise(r => { this.waiter = r; setTimeout(r, left); });
+    }
+    return this.q.shift();
+  },
+  async read(n, timeout) { const out = []; for (let i = 0; i < n; i++) out.push(await this.readByte(timeout)); return out; },
+  async send(bytes) { await this.t.write(Uint8Array.from(bytes)); },
+};
+const ch = c => c.charCodeAt(0);
+
+/* ---------------- UI state ---------------- */
+let busy = false, settings = null, hexImage = null, isDemo = false;
+function setStatus(text, cls = '') { const s = $('status'); s.textContent = text; s.className = 'pill ' + cls; }
+function refreshButtons() {
+  const connected = !!link.t, boot = link.mode === 'boot';
+  $('btnEnter').disabled = !connected || boot || busy;
+  $('btnStart').disabled = !boot || busy;
+  $('btnRead').disabled = !boot || busy;
+  $('btnWrite').disabled = !boot || busy || !settings;
+  $('btnFlash').disabled = !boot || busy || !hexImage;
+  $('btnConnect').textContent = connected ? 'Disconnect' : 'Connect';
+  $('btnDemo').disabled = connected;
+}
+async function withBusy(fn) {
+  if (busy) return; busy = true; refreshButtons();
+  try { await fn(); } catch (e) { log('ERROR: ' + e.message); showMsg(e.message, 'err'); }
+  finally { busy = false; refreshButtons(); }
+}
+function showMsg(text, cls = '') { const m = $('formMsg'); m.textContent = text; m.className = 'small ' + (cls ? cls + '-t' : ''); }
+
+/* tabs */
+document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('nav button').forEach(x => x.setAttribute('aria-selected', x === b));
+  document.querySelectorAll('section.tab').forEach(s => s.classList.toggle('active', s.id === 'tab-' + b.dataset.tab));
+}));
+
+/* ---------------- connect ---------------- */
+async function attach(t) {
+  link.t = t; link.mode = 'app'; link.q = []; link.line = '';
+  t.onData = bytes => link.onBytes(bytes);
+  t.onClose = () => { if (link.t === t) detach('connection closed'); };
+  await t.open();
+  setStatus(isDemo ? 'demo: firmware running' : 'connected', 'ok');
+  log(isDemo ? 'Demo C5 connected' : 'Serial port opened (9600 baud)');
+  refreshButtons();
+}
+async function detach(reason) {
+  const t = link.t; link.t = null; link.mode = 'none';
+  if (t) { t.onClose = null; try { await t.close(); } catch (e) {} }
+  isDemo = false; $('demoBanner').hidden = true;
+  setStatus('not connected'); $('bootInfo').textContent = '';
+  if (reason) log(reason);
+  refreshButtons();
+}
+$('btnConnect').addEventListener('click', async () => {
+  if (link.t) return detach('Disconnected');
+  if (!('serial' in navigator)) { $('noSerial').hidden = false; return; }
+  try {
+    const port = await navigator.serial.requestPort();
+    await attach(new SerialTransport(port));
+  } catch (e) { if (e.name !== 'NotFoundError') { log('ERROR: ' + e.message); setStatus('connection failed', 'err'); } }
+});
+$('btnDemo').addEventListener('click', async () => {
+  isDemo = true; $('demoBanner').hidden = false; await attach(new MockC5());
+});
+if (!('serial' in navigator)) $('noSerial').hidden = false;
+
+/* ---------------- live data ---------------- */
+const fmt = (v, d = 1) => Number.isFinite(v) ? v.toFixed(d) : '–';
+function handleLine(l) {
+  if (l[0] === '#') return showTelemetry(l);
+  log('C5: ' + l);
+  let m;
+  if ((m = l.match(/ULA replacement V(\d+)/))) { link.fwVersion = +m[1]; $('dFw').textContent = 'V' + m[1]; }
+  else if ((m = l.match(/^CRC: 0x([0-9A-F]+)/i))) $('dCrc').textContent = '0x' + m[1].toUpperCase();
+  else if ((m = l.match(/^BAT: (.+)/))) $('dBat').textContent = m[1];
+}
+function showTelemetry(l) {
+  const f = l.slice(1).split('|').filter(x => x !== '').map(Number);
+  if (f.length < 12 || f.some(x => !Number.isFinite(x))) return;
+  const [dist, speed, rpm, timeout, sw, temp, volt, vref, curr, ena, cond, time, rest] = f;
+  $('dRaw').textContent = l;
+  $('tSpeed').innerHTML = `${fmt(speed / 10)}<small>km/h</small>`;
+  $('tDist').textContent = `trip ${fmt(dist / 1e6, 2)} km`;
+  $('tRpm').innerHTML = `${rpm}<small>rpm</small>`;
+  $('tPedal').textContent = timeout < 2000 ? 'pedalling' : 'not pedalling';
+  $('tVolt').innerHTML = `${fmt(adcToVolt(volt), 2)}<small>V</small>`;
+  $('tVoltRaw').textContent = `ADC ${volt}`;
+  if (rest !== undefined) { $('tRest').innerHTML = `${fmt(adcToVolt(rest), 2)}<small>V</small>`; $('tRestRaw').textContent = `ADC ${rest} · used for the LED bar`; }
+  else { $('tRest').innerHTML = `n/a`; $('tRestRaw').textContent = 'needs firmware V1200+'; }
+  $('tCurr').innerHTML = `${fmt(adcToAmp(curr), 0)}<small>A</small>`;
+  $('tCurrRaw').textContent = `ADC ${curr} · approx.`;
+  $('tRelay').textContent = ena ? 'ON' : 'off';
+  $('tRelay').className = 'v ' + (ena ? 'ok-t' : '');
+  $('tSwitch').textContent = `button ${sw > 100 ? 'pressed' : 'released'}`;
+  $('tTemp').innerHTML = `${adcToCelsius(temp)}<small>°C</small>`;
+  $('tTempRaw').textContent = `ADC ${temp}`;
+  const flags = COND.filter(([bit]) => cond & bit);
+  $('tFlags').innerHTML = flags.length ? flags.map(([, n, c]) => `<span class="flag ${c}">${n}</span>`).join('')
+                                       : '<span class="flag ok">all OK</span>';
+  const s = Math.floor(time / 1000);
+  $('tTime').textContent = `uptime ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+/* ---------------- bootloader ---------------- */
+$('btnEnter').addEventListener('click', () => withBusy(async () => {
+  try { await enterBootloader(); }
+  catch (e) {
+    if (link.mode !== 'boot' && link.t) { link.mode = 'app'; setStatus(isDemo ? 'demo: firmware running' : 'connected', 'ok'); $('bootInfo').textContent = ''; }
+    throw e;
+  }
+}));
+async function enterBootloader() {
+  link.mode = 'connecting'; link.flush();
+  setStatus('waiting for power-on…', 'boot');
+  $('bootInfo').textContent = 'Now switch the C5 off and on again (within 20 s).';
+  log('Waiting for the bootloader: switch the C5 off and on');
+  if (isDemo) link.t.powerCycle();
+  const until = performance.now() + 20000;
+  let found = false;
+  while (!found && performance.now() < until && link.t) {
+    await link.send([ch('e')]);
+    await sleep(40);
+    found = link.q.includes(ch('B'));
+  }
+  if (!found) { link.mode = 'app'; setStatus('connected', 'ok'); $('bootInfo').textContent = ''; throw new Error('Bootloader not found. Is the C5 switched on again, and are TX/RX wired correctly?'); }
+  await sleep(150); link.flush();
+  // confirm with a version query, so a stray 'B' in text output can't fool us
+  await link.send([ch('v')]);
+  const [vh, vl] = await link.read(2, 800);
+  link.bootVersion = (vh << 8) | vl;
+  if (link.bootVersion < 1000 || link.bootVersion > 9999) throw new Error('unexpected bootloader answer');
+  await link.send([ch('g')]);
+  const [fh, fl] = await link.read(2, 800);
+  link.fwVersion = (fh << 8) | fl;
+  link.mode = 'boot';
+  const fwText = (link.fwVersion === 0 || link.fwVersion === 0xFFFF) ? 'none / invalid' : 'V' + link.fwVersion;
+  $('dFw').textContent = fwText;
+  $('bootInfo').textContent = `Bootloader V${link.bootVersion}, firmware ${fwText}`;
+  setStatus('configuration mode', 'boot');
+  log(`Bootloader V${link.bootVersion}, firmware ${fwText}`);
+  if (link.bootVersion !== 1042) log('Note: this tool was written for bootloader V1042.');
+  await readSettings();
+}
+
+async function readSettings() {
+  const b = [];
+  for (let off = 0; off < 11; off++) { await link.send([ch('r'), off, 0]); b.push(await link.readByte(800)); }
+  const u16 = o => b[o] | (b[o + 1] << 8);
+  settings = { pedelec: b[0] !== 0, wheel: u16(1), max: u16(3), min: u16(5), fan: u16(7), magT: b[9], magP: b[10], raw: b };
+  log('Settings read: ' + b.map(x => x.toString(16).padStart(2, '0')).join(' '));
+  fillForm(settings);
+  showMsg('Settings read from the C5.', 'ok');
+}
+function fillForm(s) {
+  $('fPedelec').checked = s.pedelec;
+  $('fWheel').value = s.wheel === 0xFFFF ? 1280 : s.wheel;
+  $('fMin').value = s.min === 0xFFFF ? 3 : (s.min / 10).toFixed(1);
+  $('fMaxOn').checked = s.max !== 0;
+  $('fMax').value = s.max === 0 || s.max === 0xFFFF ? 25 : (s.max / 10).toFixed(1);
+  $('fFan').value = s.fan === 0xFFFF ? 45 : s.fan;
+  $('fMagT').value = s.magT === 0xFF ? 1 : s.magT;
+  $('fMagP').value = s.magP === 0xFF ? 1 : s.magP;
+  updateMaxUi();
+}
+function updateMaxUi() {
+  const on = $('fMaxOn').checked;
+  $('fMax').disabled = !on;
+  const v = parseFloat($('fMax').value);
+  $('maxHint').textContent = !on
+    ? 'Off: the motor assists at any speed while you pedal. Not road-legal as a pedelec in the EU.'
+    : (v > 25 ? 'Above 25 km/h: not road-legal as a pedelec in the EU.' : '25 km/h is the legal limit for a pedelec in the EU.');
+  $('maxHint').className = 'hint' + ((!on || v > 25) ? ' warn-t' : '');
+}
+['fMaxOn', 'fMax'].forEach(id => $(id).addEventListener('input', updateMaxUi));
+
+function readForm() {
+  const num = (id, lo, hi, name, scale = 1) => {
+    const v = parseFloat($(id).value);
+    if (!Number.isFinite(v) || v < lo || v > hi) throw new Error(`${name} must be between ${lo} and ${hi}`);
+    return Math.round(v * scale);
+  };
+  const s = {
+    pedelec: $('fPedelec').checked,
+    wheel: num('fWheel', 300, 3000, 'Wheel circumference'),
+    min: num('fMin', 0, 20, 'Minimum speed', 10),
+    max: $('fMaxOn').checked ? num('fMax', 5, 60, 'Maximum speed', 10) : 0,
+    fan: num('fFan', 20, 80, 'Fan temperature'),
+    magT: num('fMagT', 1, 16, 'Magnets on the wheel'),
+    magP: num('fMagP', 1, 16, 'Magnets on the pedals'),
+  };
+  if (s.max && s.max < s.min + 10) throw new Error('Maximum speed must be at least 1 km/h above the minimum speed');
+  if (s.max === 0 && link.fwVersion < FW_NO_MAX_SUPPORT)
+    throw new Error(`Firmware V${link.fwVersion} doesn't support switching off the maximum speed (it would never assist). Update the firmware to V${FW_NO_MAX_SUPPORT} or newer first.`);
+  return s;
+}
+function encode(s) {
+  return [s.pedelec ? 1 : 0, s.wheel & 255, s.wheel >> 8, s.max & 255, s.max >> 8,
+          s.min & 255, s.min >> 8, s.fan & 255, s.fan >> 8, s.magT, s.magP];
+}
+$('btnRead').addEventListener('click', () => withBusy(readSettings));
+$('btnWrite').addEventListener('click', () => withBusy(async () => {
+  const s = readForm(), bytes = encode(s);
+  log('Writing settings: ' + bytes.map(x => x.toString(16).padStart(2, '0')).join(' '));
+  for (let off = 0; off < bytes.length; off++) {
+    await link.send([ch('w'), off, 0, bytes[off]]);
+    const r = await link.readByte(800);
+    if (r !== ch('D')) throw new Error(`write failed at byte ${off} (answer ${r})`);
+  }
+  await readSettings();
+  const back = settings.raw;
+  if (back.some((b, i) => b !== bytes[i])) throw new Error('Read-back differs from what was written!');
+  showMsg('Settings written and verified. They take effect when the firmware starts (Start C5).', 'ok');
+}));
+$('btnStart').addEventListener('click', () => withBusy(async () => {
+  link.flush();
+  await link.send([ch('s')]);
+  const r = await link.readByte(800).catch(() => null);
+  link.mode = 'app';
+  setStatus(isDemo ? 'demo: firmware running' : 'connected', 'ok');
+  $('bootInfo').textContent = '';
+  log(r === ch('S') ? 'Firmware started' : 'Start command sent');
+}));
+
+/* ---------------- firmware upload ---------------- */
+$('fileHex').addEventListener('change', async e => {
+  const file = e.target.files[0]; hexImage = null; refreshButtons();
+  if (!file) return;
+  $('hName').textContent = file.name;
+  try {
+    const img = parseHex(await file.text());
+    hexImage = img;
+    $('hVer').textContent = 'V' + img.version;
+    $('hSize').textContent = `${img.codeEnd} of ${MEMPOS_VER} bytes`;
+    const ok = img.stored === img.computed;
+    $('hCrc').innerHTML = ok ? `<span class="ok-t">OK (0x${img.computed.toString(16).toUpperCase()})</span>`
+      : `<span class="err-t">wrong: file says 0x${img.stored.toString(16).toUpperCase()}, contents give 0x${img.computed.toString(16).toUpperCase()}. The C5 would refuse to run it.</span>`;
+    if (!ok) hexImage = null;
+    log(`Loaded ${file.name}: V${img.version}, ${img.codeEnd} bytes, CRC ${ok ? 'OK' : 'WRONG'}`);
+  } catch (err) {
+    $('hVer').textContent = $('hSize').textContent = '–';
+    $('hCrc').innerHTML = `<span class="err-t">${err.message}</span>`;
+    log('ERROR: ' + err.message);
+  }
+  refreshButtons();
+});
+$('btnFlash').addEventListener('click', () => withBusy(async () => {
+  const img = hexImage;
+  $('flashMsg').textContent = 'Uploading…'; $('prog').value = 0;
+  log(`Uploading firmware V${img.version}`);
+  link.flush();
+  await link.send([ch('f')]);
+  await sleep(50);
+  for (let p = 0; p < PAGES; p++) {
+    const page = Array.from(img.mem.subarray(p * PAGE, (p + 1) * PAGE));
+    const sum = page.reduce((s, b) => s + b, 0) & 0xFF;
+    await link.send([...page, sum]);
+    const r = await link.readByte(2000);
+    if (r !== ch('O')) {
+      $('flashMsg').textContent = `Failed at page ${p + 1} of ${PAGES}. Enter configuration mode and try again.`;
+      throw new Error(`page ${p} not confirmed (answer ${r})`);
+    }
+    $('prog').value = p + 1;
+  }
+  const d = await link.readByte(2000);
+  if (d !== ch('D')) throw new Error('upload not completed (no final confirmation)');
+  await link.send([ch('g')]);
+  const [fh, fl] = await link.read(2, 800);
+  link.fwVersion = (fh << 8) | fl;
+  $('dFw').textContent = 'V' + link.fwVersion;
+  $('bootInfo').textContent = `Bootloader V${link.bootVersion}, firmware V${link.fwVersion}`;
+  $('flashMsg').textContent = `Done: firmware V${link.fwVersion} installed. Click "Start C5" (Settings) or switch the C5 off and on.`;
+  log(`Upload complete, firmware now V${link.fwVersion}`);
+}));
+
+$('btnClearLog').addEventListener('click', () => { logEl.textContent = ''; });
+refreshButtons();
+</script>
+</body>
+</html>

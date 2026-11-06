@@ -42,6 +42,7 @@
 
 EXTERN void   relay_Init    (void);
 EXTERN void   relay_Enable  (E_BOOL bEnabled);
+EXTERN E_BOOL relay_IsEnabled (void);
 
 /* End: Prototype declarations                                                */
 /******************************************************************************/

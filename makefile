@@ -1,6 +1,6 @@
 # Hey Emacs, this is a -*- makefile -*-
 #----------------------------------------------------------------------------
-# WinAVR Makefile Template written by Eric B. Weddington, Jörg Wunsch, et al.
+# WinAVR Makefile Template written by Eric B. Weddington, JÃ¶rg Wunsch, et al.
 #
 # Released to the Public Domain
 #
@@ -104,6 +104,7 @@ SRC += switch.c
 SRC += speaker.c
 SRC += voltage.c
 SRC += current.c
+SRC += pedelec.c
 
 # List C++ source files here. (C dependencies are automatically generated.)
 CPPSRC = 
@@ -239,7 +240,7 @@ PRINTF_LIB_FLOAT = -Wl,-u,vfprintf -lprintf_flt
 
 # If this is left blank, then it will use the Standard printf version.
 PRINTF_LIB = 
-PRINTF_LIB = $(PRINTF_LIB_MIN)
+#PRINTF_LIB = $(PRINTF_LIB_MIN)  # 2026: printf no longer used
 #PRINTF_LIB = $(PRINTF_LIB_FLOAT)
 
 
@@ -423,7 +424,7 @@ ALL_ASFLAGS = -mmcu=$(MCU) -I. -x assembler-with-cpp $(ASFLAGS)
 
 
 # Default target.
-all: begin gccversion sizebefore build sizeafter end
+all: begin gccversion sizebefore build crc sizeafter end
 
 # Change the build target to build a HEX file or a library.
 build: elf hex eep lss sym
@@ -454,7 +455,7 @@ end:
 
 # Display size of file.
 HEXSIZE = $(SIZE) --target=$(FORMAT) $(TARGET).hex
-ELFSIZE = $(SIZE) --mcu=$(MCU) --format=avr $(TARGET).elf
+ELFSIZE = $(SIZE) $(TARGET).elf  # 2026: modern avr-size has no --format=avr
 
 sizebefore:
 	@if test -f $(TARGET).elf; then echo; echo $(MSG_SIZE_BEFORE); $(ELFSIZE); \
@@ -528,6 +529,12 @@ extcoff: $(TARGET).elf
 	$(COFFCONVERT) -O coff-ext-avr $< $(TARGET).cof
 
 
+
+# 2026: embed the firmware CRC32 (replaces crc_calc.exe + double build).
+# $(TARGET)_crc.hex is the file to flash or upload.
+crc: $(TARGET).hex
+	python3 tools/fwcrc.py patch $(TARGET).hex $(TARGET)_crc.hex
+	python3 tools/fwcrc.py check $(TARGET)_crc.hex
 
 # Create final output files (.hex, .eep) from ELF output file.
 %.hex: %.elf
@@ -616,6 +623,7 @@ clean_list :
 	@echo
 	@echo $(MSG_CLEANING)
 	$(REMOVE) $(TARGET).hex
+	$(REMOVE) $(TARGET)_crc.hex
 	$(REMOVE) $(TARGET).eep
 	$(REMOVE) $(TARGET).cof
 	$(REMOVE) $(TARGET).elf
@@ -639,6 +647,6 @@ $(shell mkdir $(OBJDIR) 2>/dev/null)
 
 
 # Listing of phony targets.
-.PHONY : all begin finish end sizebefore sizeafter gccversion \
+.PHONY : all crc begin finish end sizebefore sizeafter gccversion \
 build elf hex eep lss sym coff extcoff \
 clean clean_list program debug gdb-config

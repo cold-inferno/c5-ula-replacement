@@ -220,10 +220,10 @@ UINT16 temp_GetAvg (void)
 /**
 @brief  A helper method to convert ADC value to temperature.
 
-        This function returns given ADC value as temperature in °C.
+        This function returns given ADC value as temperature in Â°C.
         
 @param  adc_val ADC value
-@return Temperature value in °C
+@return Temperature value in Â°C
 @retval UINT16
 */
 /* ****************************************************************************/

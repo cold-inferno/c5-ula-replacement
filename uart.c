@@ -32,7 +32,7 @@
 /** @brief Definition for serial transmission speed                           */
 #define BAUD_RATE 9600
 
-#if defined (__AVR_ATmega88__)
+#if defined (UCSR0A) /* ATmega48/88/168/328 family (incl. P/PA variants) */
   #define USR   UCSR0A
   #define UCR   UCSR0B
   #define UBRR  UBRR0L

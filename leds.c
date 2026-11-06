@@ -39,22 +39,8 @@
 /******************************************************************************/
 /* Constants (#define)                *//*!@addtogroup define Constants *//*@{*/
 
-/* Voltage definitions - don't change this unless you know what you're doing! */
-
-/** @brief ADC value for 10.0 Volt                                            */
-#define VOLT_10V        448U
-
-/** @brief ADC value for 10.5 Volt                                            */
-#define VOLT_10V5       472U
-
-/** @brief ADC value for 11.0 Volt                                            */
-#define VOLT_11V        496U
-
-/** @brief ADC value for 11.5 Volt                                            */
-#define VOLT_11V5       520U
-
-/** @brief ADC value for 12.0 Volt                                            */
-#define VOLT_12V        544U
+/* 2026: voltage LED thresholds VOLT_LED1..5 now come from the battery
+   profile in global.h */
 
 /* Current definitions - don't change this unless you know what you're doing! */
 
@@ -169,7 +155,7 @@ void leds_ShowVoltage(void)
 {
   UINT16 u16Help;
   
-  u16Help = voltage_GetAvg();
+  u16Help = voltage_GetDisplay();
   
   MUX_VOLT();
 
@@ -187,7 +173,7 @@ void leds_ShowVoltage(void)
   }
   else 
   {
-    if(u16Help >= VOLT_10V)
+    if(u16Help >= VOLT_LED1)
     {
       LED1_ON();
     }
@@ -196,7 +182,7 @@ void leds_ShowVoltage(void)
       LED1_OFF();
     }
     
-    if(u16Help >= VOLT_10V5)
+    if(u16Help >= VOLT_LED2)
     {
       LED2_ON();
     }
@@ -205,7 +191,7 @@ void leds_ShowVoltage(void)
       LED2_OFF();
     }
     
-    if(u16Help >= VOLT_11V)
+    if(u16Help >= VOLT_LED3)
     {
       LED3_ON();
     }
@@ -214,7 +200,7 @@ void leds_ShowVoltage(void)
       LED3_OFF();
     }
     
-    if(u16Help >= VOLT_11V5)
+    if(u16Help >= VOLT_LED4)
     {
       LED4_ON();
     }
@@ -223,7 +209,7 @@ void leds_ShowVoltage(void)
       LED4_OFF();
     }
     
-    if(u16Help >= VOLT_12V)
+    if(u16Help >= VOLT_LED5)
     {
       LED5_ON();
     }

@@ -4,23 +4,21 @@
 @author           Philipp Bank
 @copyright        Creative Commons by-nc-sa 3.0
                   (http://creativecommons.org/licenses/by-nc-sa/3.0/)
-                  
-@brief            This module provides an interface to stdout.
-                  
-                  This module is used to provide an exchangeable interface for 
-                  stdout-functions like printf.
-                  
-                  Printing characters is redirected to uart_PutChar().
+@brief            Minimal output functions for the serial interface.
+
+                  2026: rewritten without stdio/printf. The original used
+                  fdevopen() + printf(), which pulled in vfprintf and malloc
+                  and left only ~230 bytes of free flash.
 *//*@}*/
 
 /******************************************************************************/
 /* Includes (#include)                                                        */
 #include <avr/io.h>
+#include <avr/pgmspace.h>
 
 /* Own header files */
 #include "xtypes.h"
 #include "global.h"
-
 #include "uart.h"
 
 #define EXPORT
@@ -28,90 +26,59 @@
 #undef EXPORT
 
 /******************************************************************************/
-/* Constants (#define)                *//*!@addtogroup define Constants *//*@{*/
-/* End: Constants (#define)                                             *//*@}*/
-/******************************************************************************/
-
-/******************************************************************************/
-/* Macro definitions (#define)           *//*!@addtogroup macros Macros *//*@{*/
-/* End: Macro definitions (#define)                                     *//*@}*/
-/******************************************************************************/
-
-/******************************************************************************/
-/* Basic types (typedef)                 *//*!@addtogroup typedef Types *//*@{*/
-/* End: Basic types (typedef)                                           *//*@}*/
-/******************************************************************************/
-
-/******************************************************************************/
-/* Local constants (const)      *//*!@addtogroup loccon Local constants *//*@{*/
-/* End: Local constants (const)                                         *//*@}*/
-/******************************************************************************/
-
-/******************************************************************************/
-/* Local variables              *//*!@addtogroup locvar Local variables *//*@{*/
-/* End: Local variables                                                 *//*@}*/
-/******************************************************************************/
-
-/******************************************************************************/
-/* Global variables           *//*!@addtogroup globvar Global variables *//*@{*/
-/* End: Global variables                                                *//*@}*/
-/******************************************************************************/
-
-/******************************************************************************/
-/* Prototype declarations                                                     */
-/* End: Prototype declarations                                                */
-/******************************************************************************/
-
-/******************************************************************************/
-/* Local functions             *//*!@addtogroup locfunc Local functions *//*@{*/
-/* End: Local functions                                                 *//*@}*/
-/******************************************************************************/
-
-/******************************************************************************/
 /* Global functions          *//*!@addtogroup globfunc Global functions *//*@{*/
 
-/* ****************************************************************************/
-/**
-@brief  Init fnction of module print.
-
-        This function redirects outputs to stdout to the function print_Char().
-        
-@see print_Char()
-@return void
-*/
-/* ****************************************************************************/
+/** @brief Init function of module <print.c>. Nothing to do any more.        */
 void print_Init (void)
 {
-  /* connect with printf (STDOUT) */
-  fdevopen (print_Char, NULL);
 }
 
-
-/* ****************************************************************************/
-/**
-@brief  Common interface function for stdout.
-
-        This function directly redirects to uart_PutChar().
-        
-        Since the parameter stream isn't used it can be set to NULL.
-        
-@param c CHAR charcater to be writen on stdout
-@param stream FILE* file pointer for compability with stdout access.
-@return INT16
-@retval always 0
-*/
-/* ****************************************************************************/
-INT16  print_Char (CHAR c, FILE* stream)
+/** @brief Prints one character ('\n' is expanded to "\r\n" by the UART).    */
+void print_Char (CHAR c)
 {
   uart_PutChar(c);
-  
-  return (0U);
 }
 
+/** @brief Prints a zero-terminated string stored in flash (use PRINT_P()).  */
+void print_StrP (const char* pStr)
+{
+  CHAR c;
+  while ((c = (CHAR)pgm_read_byte(pStr++)) != 0)
+  {
+    uart_PutChar(c);
+  }
+}
+
+/** @brief Prints an unsigned 32 bit value in decimal, without padding.      */
+void print_U32 (UINT32 u32Value)
+{
+  CHAR  acBuf[10];
+  UINT8 u8Len = 0U;
+
+  do
+  {
+    acBuf[u8Len++] = (CHAR)('0' + (u32Value % 10UL));
+    u32Value /= 10UL;
+  } while (u32Value != 0UL);
+
+  while (u8Len != 0U)
+  {
+    uart_PutChar(acBuf[--u8Len]);
+  }
+}
+
+/** @brief Prints an unsigned 32 bit value as 8 upper-case hex digits.       */
+void print_Hex32 (UINT32 u32Value)
+{
+  for (UINT8 i = 0U; i < 8U; i++)
+  {
+    UINT8 u8Nibble = (UINT8)(u32Value >> 28);
+    uart_PutChar((CHAR)(u8Nibble < 10U ? ('0' + u8Nibble) : ('A' - 10 + u8Nibble)));
+    u32Value <<= 4;
+  }
+}
 
 /* End: Global functions                                                *//*@}*/
 /******************************************************************************/
 
 /**** Last line of code                                                    ****/
-
-

@@ -23,6 +23,11 @@
     before setting pedaling RPM to 0.                                         */
 #define PEDAL_TIMEOUT 2000U
 
+/** @brief 2026: shortest accepted time between two pedal sensor pulses in ms,
+    for ONE magnet (divided by the number of magnets). Shorter pulses are
+    treated as reed switch contact bounce. 100 ms = 600 rpm with one magnet. */
+#define PEDAL_MIN_PERIOD_MS 100U
+
 /* End: define Constants                                                *//*@}*/
 /******************************************************************************/
 

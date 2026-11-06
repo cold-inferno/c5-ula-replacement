@@ -9,3 +9,7 @@
 *.d
 .dep/
 obj/
+test/test_pedelec
+!release/*.hex
+!release/*.eep
+__pycache__/

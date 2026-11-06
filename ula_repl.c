@@ -20,7 +20,6 @@
 #include <util/delay.h>
 #include <avr/interrupt.h>
 #include <avr/pgmspace.h>
-#include <stdio.h>
 
 /* Own header files */
 #include "xtypes.h"
@@ -39,6 +38,8 @@
 #include "speaker.h"
 #include "voltage.h"
 #include "current.h"
+#include "print.h"
+#include "pedelec.h"
 
 
 
@@ -86,6 +87,9 @@ STATIC UINT8  mg_u8NumMagnetsTacho  = DEFAULT_MAGNET_NUMBER_TACHO;
 
 /** @brief UINT8 variable to keep the number of pedal reed switch magnets */
 STATIC UINT8  mg_u8NumMagnetsPedal  = DEFAULT_MAGNET_NUMBER_PEDAL;
+
+/** @brief 2026: motor relay decision state                                  */
+STATIC S_PEDELEC_STATE mg_sPedelec;
 
 /* End: Local variables                                                 *//*@}*/
 /******************************************************************************/
@@ -163,20 +167,25 @@ int main (void)
   mg_u8NumMagnetsPedal  = memory_Get()->u8NumMagnetsPedal;
   
   /* print firmware version on serial out */
-  printf("ULA replacement V%d\n\n", pgm_read_word(MEMPOS_VER));
-  printf("CRC: 0x%08lX\n\n",        safety_GetCRC());
+  PRINT_P("ULA replacement V");
+  print_U32(pgm_read_word(MEMPOS_VER));
+  PRINT_P("\n\nCRC: 0x");
+  print_Hex32(safety_GetCRC());
+  PRINT_P("\n\nBAT: " BATTERY_NAME "\n");
   
   /* print settings on serial out */
-  printf("PM:  %d\n",   mg_bIsPedelec);
-  printf("WS:  %umm\n", memory_Get()->u16WheelSize);
-  printf("LMX: %u\n",   mg_u16SpeedLimitMax);
-  printf("LMN: %u\n",   mg_u16SpeedLimitMin);
-  printf("FT:  %u\n",   mg_u16FanTemp);
-  printf("NMT: %u\n",   mg_u8NumMagnetsTacho);
-  printf("NMP: %u\n\n", mg_u8NumMagnetsPedal);
+  PRINT_P("PM:  ");  print_U32(mg_bIsPedelec);
+  PRINT_P("\nWS:  "); print_U32(memory_Get()->u16WheelSize);
+  PRINT_P("mm\nLMX: "); print_U32(mg_u16SpeedLimitMax);
+  PRINT_P("\nLMN: "); print_U32(mg_u16SpeedLimitMin);
+  PRINT_P("\nFT:  "); print_U32(mg_u16FanTemp);
+  PRINT_P("\nNMT: "); print_U32(mg_u8NumMagnetsTacho);
+  PRINT_P("\nNMP: "); print_U32(mg_u8NumMagnetsPedal);
+  PRINT_P("\n\n");
   
   /* put relay and speaker to default conditions */
   relay_Enable(FALSE);
+  pedelec_Init(&mg_sPedelec, timer_GetSystemTime());
   speaker_Off();
   
   /* reset watchdog before entering the main loop */
@@ -262,20 +271,29 @@ int main (void)
       wdt_reset();
       
       /* print information on serial out */
-      printf("#");
-      printf("%lu|", speed_GetDistance());    // distance
-      printf("%lu|", SPEED_GET());            // speed (10th of km/h)
-      printf("%lu|", pedal_GetRpm());         // upm
-      printf("%lu|", pedal_GetTimeout());     // timeout
-      printf("%u|",  adc_Read(ADC_SWITCH));   // switch
-      printf("%u|",  temp_GetAvg());          // vth
-      printf("%u|",  voltage_GetValue());     // voltage
-      printf("%u|",  voltage_GetRef());       // vref
-      printf("%u|",  current_GetValue());     // current
-      printf("%u|",  bMotorEnabled);          // motor enabled?
-      printf("%u|",  safety_GetCondition());  // condition
-      printf("%lu|", timer_GetSystemTime());  // timestamp
-      printf("\n");
+      /* same format as V1172, plus the resting voltage (2026) at the end:
+         #DIST|SPEED|RPM|TIMEOUT|SWITCH|TEMP|VOLT|VREF|CURR|ENA|COND|TIME|REST| */
+      UINT32 au32Out[13];
+      au32Out[0]  = speed_GetDistance();    // distance
+      au32Out[1]  = SPEED_GET();            // speed (10th of km/h)
+      au32Out[2]  = pedal_GetRpm();         // upm
+      au32Out[3]  = pedal_GetTimeout();     // timeout
+      au32Out[4]  = adc_Read(ADC_SWITCH);   // switch
+      au32Out[5]  = temp_GetAvg();          // vth
+      au32Out[6]  = voltage_GetValue();     // voltage
+      au32Out[7]  = voltage_GetRef();       // vref
+      au32Out[8]  = current_GetValue();     // current
+      au32Out[9]  = bMotorEnabled;          // motor enabled?
+      au32Out[10] = safety_GetCondition();  // condition
+      au32Out[11] = timer_GetSystemTime();  // timestamp
+      au32Out[12] = voltage_GetRest();      // resting voltage (2026)
+      print_Char('#');
+      for(UINT8 i = 0U; i < 13U; i++)
+      {
+        print_U32(au32Out[i]);
+        print_Char('|');
+      }
+      print_Char('\n');
     }
     
   } /* end of: while(1) application loop */
@@ -300,51 +318,25 @@ int main (void)
 /* ****************************************************************************/
 E_BOOL mg_RelayControl (void)
 {
-  E_BOOL bRet = TRUE;
-  
-  /* motor will be disabled if any error condition occours */
-  if(safety_GetCondition() >= COND_VOLT_ERR)
-  {
-    bRet = FALSE;
-  }
-  /* motor will be disabled if momentary motor load is too high */
-  else if(current_GetValue() >= MAX_CURRENT)
-  {
-    bRet = FALSE;
-  }
-  /* motor will be disabled if pedelec settings require it */
-  else if (FALSE != mg_bIsPedelec)
-  {
-    if (SPEED_GET() < mg_u16SpeedLimitMin)
-    {
-      bRet = FALSE;
-    }
-    else
-    {
-      if(SPEED_GET() > mg_u16SpeedLimitMax)
-      {
-        bRet = FALSE;
-      }
-      else
-      {
-        if (pedal_GetTimeout() >= PEDAL_TIMEOUT)
-        {
-          bRet = FALSE;
-        }
-      }
-    }
-  }
-  
-  /* enable/disable motor relay */
-  if(FALSE == bRet)
-  {
-    relay_Enable(FALSE);
-  }
-  else
-  {
-    relay_Enable(TRUE);
-  }
-  
+  S_PEDELEC_INPUT sIn;
+  E_BOOL bRet;
+
+  sIn.u32Now       = timer_GetSystemTime();
+  /* motor will be disabled immediately on any error condition or if the
+     momentary motor load is too high */
+  sIn.bSafetyCut   = ((safety_GetCondition() >= COND_VOLT_ERR) ||
+                      (current_GetValue() >= MAX_CURRENT)) ? TRUE : FALSE;
+  sIn.bPedelecMode = mg_bIsPedelec;
+  sIn.bPedalling   = (pedal_GetTimeout() < PEDAL_TIMEOUT) ? TRUE : FALSE;
+  sIn.u32Speed     = SPEED_GET();
+  sIn.u16SpeedMin  = mg_u16SpeedLimitMin;
+  sIn.u16SpeedMax  = mg_u16SpeedLimitMax;
+
+  /* 2026: decision with hysteresis and minimum dwell time, see pedelec.c */
+  bRet = pedelec_Decide(&mg_sPedelec, &sIn);
+
+  relay_Enable(bRet);
+
   return (bRet);
 } /* End: mg_RelayControl() */
 

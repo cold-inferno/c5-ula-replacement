@@ -103,6 +103,12 @@ void relay_Enable (E_BOOL bEnabled)
   }
 } /* End: relay_Enable() */
 
+/** @brief 2026: returns TRUE if the motor relay output is enabled.           */
+E_BOOL relay_IsEnabled (void)
+{
+  return (((RELAY_PORT & (1U << RELAY_BIT)) != 0U) ? TRUE : FALSE);
+}
+
 
 /* End: Global functions                                                *//*@}*/
 /******************************************************************************/

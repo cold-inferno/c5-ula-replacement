@@ -103,7 +103,7 @@ STATIC VOLATILE UINT8  mg_u8Ticks        = NO_TICK;
 @return void
 */
 /* ****************************************************************************/
-ISR(SIG_OUTPUT_COMPARE2A)
+ISR (TIMER2_COMPA_vect)
 {
   LOCAL_STATIC UINT8 u8Toggle = 0U;
   
@@ -230,12 +230,16 @@ void timer_LockTicks (void)
 @retval UINT32
 */
 /* ****************************************************************************/
-inline UINT32 timer_GetSystemTime(void)
+UINT32 timer_GetSystemTime(void)
 {
   UINT32 u32Ret;
+  /* 2026: save/restore the interrupt flag instead of cli()/sei(). This
+     function is also called from inside ISRs (pedal, tacho, LED multiplexing),
+     where an unconditional sei() re-enabled interrupts and allowed nesting. */
+  UINT8  u8Sreg = SREG;
   cli();
   u32Ret = mg_u32SystemTime;
-  sei();
+  SREG = u8Sreg;
   return (u32Ret);
 }
 

@@ -74,7 +74,7 @@ typedef struct
   UINT16    u16WheelSize;       // wheel circumflex in mm
   UINT16    u16SpeedLimitMax;   // 10th parts of km/h (i.e. 123 equals 12.3km/h)
   UINT16    u16SpeedLimitMin;   // 10th parts of km/h (i.e. 123 equals 12.3km/h)
-  UINT16    u16TempFan;         // fan activation temperature (in °C)
+  UINT16    u16TempFan;         // fan activation temperature (in Â°C)
   UINT8     u8NumMagnetsTacho;  // Number of magnets for tacho reed switch
   UINT8     u8NumMagnetsPedal;  // Number of magnets for pedal reed switch
 } S_MEM_STRUCTRUE;

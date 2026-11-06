@@ -76,6 +76,8 @@ STATIC          UINT16 mg_u16WheelSize;
 
 /** @brief UINT8 variable to keep the number of tacho reed switch magnets */
 STATIC UINT8  mg_u8NumMagnetsTacho  = DEFAULT_MAGNET_NUMBER_TACHO;
+/** @brief Full wheel circumference in mm (as configured in EEPROM)          */
+STATIC          UINT16 mg_u16WheelSizeFull;
 
 /* End: Local variables                                                 *//*@}*/
 /******************************************************************************/
@@ -109,7 +111,7 @@ STATIC UINT8  mg_u8NumMagnetsTacho  = DEFAULT_MAGNET_NUMBER_TACHO;
 @return void
 */
 /* ****************************************************************************/
-ISR (SIG_INTERRUPT0)
+ISR (INT0_vect)
 {
   LOCAL_STATIC  UINT32  u32CurrentTime;
                 UINT32  u32DiffTime;
@@ -172,7 +174,12 @@ void speed_Init (void)
   
   /* the effective wheel size is the actual wheel size divided by the number of
      magnets */
-  mg_u16WheelSize = ( memory_Get()->u16WheelSize / mg_u8NumMagnetsTacho );
+  mg_u16WheelSizeFull = memory_Get()->u16WheelSize;
+  if((0U == mg_u16WheelSizeFull) || (0xFFFFU == mg_u16WheelSizeFull))
+  {
+    mg_u16WheelSizeFull = WHEEL_SIZE;  // erased/invalid EEPROM: use default
+  }
+  mg_u16WheelSize = ( mg_u16WheelSizeFull / mg_u8NumMagnetsTacho );
   
   /* setup for falling edge */
   EICRA |=  (1<<ISC01);
@@ -246,6 +253,12 @@ UINT32 speed_GetDistance (void)
 @return void
 */
 /* ****************************************************************************/
+UINT32 speed_GetSpeed (void)
+{
+  /* wheel rpm * circumference [mm] * 60 min/h / 1e6 mm/km * 10 = 10th km/h */
+  return (speed_GetRpm() * mg_u16WheelSizeFull * 6UL / 10000UL);
+}
+
 void speed_CheckTimeout (UINT32 u32SystemTime)
 {
   UINT32 u32TickTime;
