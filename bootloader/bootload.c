@@ -34,8 +34,9 @@
 /* Constants (#define)                *//*!@addtogroup define Constants *//*@{*/
 
 /* 2026: V1043 = V1042 + watchdog fix + support for chips with 128-byte flash
-   pages (ATmega328P). The serial protocol is unchanged. */
-#define BL_VERSION    1043U
+   pages (ATmega328P). V1044 = V1043 + hands the reset cause to the firmware
+   in GPIOR0 (bit 7 set = valid). The serial protocol is unchanged. */
+#define BL_VERSION    1044U
 
 /** @brief Size of one block in the upload protocol (fixed, 112 blocks)      */
 #define BLOCK_SIZE    64U
@@ -117,6 +118,7 @@ int main (void)
      shortest timeout) until it is switched off. Without this the bootloader
      was reset every ~16 ms and never started the firmware again, so the
      unit appeared dead until the C5 was switched off and on. */
+  GPIOR0 = (UINT8)(MCUSR | 0x80U);   /* reset cause for the firmware (V1044) */
   MCUSR = 0U;
   wdt_disable();
 

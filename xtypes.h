@@ -77,6 +77,7 @@ typedef struct
   UINT16    u16TempFan;         // fan activation temperature (in °C)
   UINT8     u8NumMagnetsTacho;  // Number of magnets for tacho reed switch
   UINT8     u8NumMagnetsPedal;  // Number of magnets for pedal reed switch
+  UINT8     u8LogEnable;        // 2026: ride log, 1 = on (anything else = off)
 } S_MEM_STRUCTRUE;
 
 /* End: Basic types (typedef)                                           *//*@}*/

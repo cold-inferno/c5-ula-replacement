@@ -42,6 +42,7 @@
 #include "pedelec.h"
 #include "leds.h"
 #include "switch.h"
+#include "ridelog.h"
 
 
 
@@ -105,6 +106,7 @@ STATIC S_PEDELEC_STATE mg_sPedelec;
 /* Prototype declarations                                                     */
        int    main            (void);
 STATIC E_BOOL mg_RelayControl (void);
+STATIC void   mg_LogInput     (S_RL_INPUT* psIn, E_BOOL bMotorEnabled);
 /* End: Prototype declarations                                                */
 /******************************************************************************/
 
@@ -183,11 +185,15 @@ int main (void)
   PRINT_P("\nFT:  "); print_U32(mg_u16FanTemp);
   PRINT_P("\nNMT: "); print_U32(mg_u8NumMagnetsTacho);
   PRINT_P("\nNMP: "); print_U32(mg_u8NumMagnetsPedal);
+  PRINT_P("\nLOG: "); print_U32(memory_Get()->u8LogEnable == 1U ? 1U : 0U);
   PRINT_P("\n\n");
   
   /* put relay and speaker to default conditions */
   relay_Enable(FALSE);
   pedelec_Init(&mg_sPedelec, timer_GetSystemTime());
+
+  /* 2026: optional ride log (reset cause, events, black box) */
+  ridelog_Init();
   speaker_Off();
   
   /* reset watchdog before entering the main loop */
@@ -254,6 +260,15 @@ int main (void)
          motor current while it is pressed */
       leds_SetLeftBar((ON == switch_Get()) ? TRUE : FALSE,
                       pedelec_SpeedBarLevel(SPEED_GET()));
+      {
+        S_RL_INPUT sLog;
+        mg_LogInput(&sLog, bMotorEnabled);
+        ridelog_Check(&sLog);
+        if(TIMER_IS_TICK1024())
+        {
+          ridelog_Sample(&sLog);   /* black box: one sample per second */
+        }
+      }
       current_UpdateAvg();
     }
     
@@ -347,6 +362,21 @@ E_BOOL mg_RelayControl (void)
 } /* End: mg_RelayControl() */
 
 
+
+/** @brief 2026: collects the current measurements for the ride log.        */
+void mg_LogInput (S_RL_INPUT* psIn, E_BOOL bMotorEnabled)
+{
+  psIn->u32Speed   = SPEED_GET();
+  psIn->u16Volt    = voltage_GetValue();
+  psIn->u16Curr    = current_GetValue();
+  psIn->u16TempAdc = temp_GetAvg();
+  psIn->u8TempC    = (UINT8)temp_GetCelsius(psIn->u16TempAdc);
+  psIn->u8Cond     = (UINT8)safety_GetCondition();
+  psIn->u8Flags    = 0U;
+  if (FALSE != bMotorEnabled)                    { psIn->u8Flags |= RL_F_RELAY; }
+  if (ON == switch_Get())                        { psIn->u8Flags |= RL_F_BUTTON; }
+  if (pedal_GetTimeout() < PEDAL_TIMEOUT)        { psIn->u8Flags |= RL_F_PEDALLING; }
+}
 
 /* End: Local functions                                                 *//*@}*/
 /******************************************************************************/

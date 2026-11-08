@@ -49,11 +49,11 @@
 
 /** @brief UINT16 variable to store the application firmware version at a 
     dedicated memory position.                                                */
-CONST UINT16 g_u16ApplicationVersion SECTION_VERSION  = FW_VERSION;
+CONST UINT16 g_u16ApplicationVersion SECTION_VERSION __attribute__ ((used)) = FW_VERSION; /* 2026: used = kept by LTO */
 
 /** @brief UINT32 variable to store the firmware checksum at a dedicated memory 
     position.                                                                 */
-CONST UINT32 g_u32ApplicationCRC     SECTION_CRC      = APPLICATION_CRC;
+CONST UINT32 g_u32ApplicationCRC     SECTION_CRC     __attribute__ ((used)) = APPLICATION_CRC;
 #endif
 
 /** @brief Variable to reserve memory for structure in EEPROM                 */
@@ -65,7 +65,8 @@ CONST S_MEM_STRUCTRUE sMemoryEEPROM SECTION_EEMEM =
   SPEEDLIMIT_MIN,
   VALUE_TEMP_FAN,
   DEFAULT_MAGNET_NUMBER_TACHO,
-  DEFAULT_MAGNET_NUMBER_PEDAL
+  DEFAULT_MAGNET_NUMBER_PEDAL,
+  0U                            /* 2026: ride log off by default */
 };
 
 /* End: Global variables                                                *//*@}*/

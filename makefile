@@ -113,6 +113,7 @@ SRC += speaker.c
 SRC += voltage.c
 SRC += current.c
 SRC += pedelec.c
+SRC += ridelog.c
 
 # List C++ source files here. (C dependencies are automatically generated.)
 CPPSRC = 
@@ -190,12 +191,16 @@ CFLAGS += -fpack-struct
 CFLAGS += -fshort-enums
 CFLAGS += -Wall
 CFLAGS += -Wstrict-prototypes
+# 2026: smaller code (needed to fit the ride log on the ATmega88):
+# drop unused functions and optimise across files at link time
+CFLAGS += -ffunction-sections -fdata-sections -flto -mrelax
 #CFLAGS += -mshort-calls
 #CFLAGS += -fno-unit-at-a-time
 #CFLAGS += -Wundef
 #CFLAGS += -Wunreachable-code
 #CFLAGS += -Wsign-compare
-CFLAGS += -Wa,-adhlns=$(<:%.c=$(OBJDIR)/%.lst)
+# 2026: assembler listings disabled (not compatible with -flto)
+#CFLAGS += -Wa,-adhlns=$(<:%.c=$(OBJDIR)/%.lst)
 CFLAGS += $(patsubst %,-I%,$(EXTRAINCDIRS))
 CFLAGS += $(CSTANDARD)
 
@@ -297,6 +302,8 @@ EXTMEMOPTS += -Wl,--section-start=.app_crc=$(MEMPOS_CRC)
 #    --cref:    add cross reference to  map file
 LDFLAGS = -Wl,-Map=$(TARGET).map,--cref
 LDFLAGS += $(EXTMEMOPTS)
+LDFLAGS += -Wl,--gc-sections -flto -Os -mrelax
+LDFLAGS += -Wl,--undefined=g_u16ApplicationVersion,--undefined=g_u32ApplicationCRC
 LDFLAGS += $(patsubst %,-L%,$(EXTRALIBDIRS))
 LDFLAGS += $(PRINTF_LIB) $(SCANF_LIB) $(MATH_LIB)
 #LDFLAGS += -T linker_script.x

@@ -101,6 +101,32 @@ def decode(line):
     return s
 
 
+def enter_bootloader(fd, wait=30):
+    """Send 'e' until the bootloader answers 'B', then confirm with a version
+    query: the firmware's own start-up text contains a 'B' too ("BAT: ...").
+    Returns the bootloader version."""
+    end = time.time() + wait
+    while time.time() < end:
+        got = b''
+        while time.time() < end and b'B' not in got:
+            os.write(fd, b'e')
+            got += read_some(fd, 0.04)
+        if b'B' not in got:
+            break
+        time.sleep(0.15)
+        termios.tcflush(fd, termios.TCIFLUSH)
+        os.write(fd, b'v')
+        ans = b''
+        t_end = time.time() + 0.5
+        while len(ans) < 2 and time.time() < t_end:
+            ans += read_some(fd, 0.05)
+        if len(ans) == 2 and 1000 <= ((ans[0] << 8) | ans[1]) <= 9999:
+            termios.tcflush(fd, termios.TCIFLUSH)
+            return (ans[0] << 8) | ans[1]
+        termios.tcflush(fd, termios.TCIFLUSH)   # false alarm: keep trying
+    raise SystemExit('Bootloader not found. Adapter TX must go to board RXD.')
+
+
 def listen(port, seconds):
     fd = open_port(port)
     print(f'Listening on {port} at 9600 baud for {seconds} s (sending nothing)...')
@@ -133,18 +159,7 @@ def listen(port, seconds):
 def settings(port, wait=30):
     fd = open_port(port)
     print(f'Switch the C5 off and on now (waiting up to {wait} s)...')
-    end = time.time() + wait
-    got = b''
-    while time.time() < end:
-        os.write(fd, b'e')
-        got += read_some(fd, 0.04)
-        if b'B' in got:
-            break
-    else:
-        os.close(fd)
-        raise SystemExit('Bootloader not found. Adapter TX must go to board RXD.')
-    time.sleep(0.15)
-    termios.tcflush(fd, termios.TCIFLUSH)
+    enter_bootloader(fd, wait)
 
     def ask(cmd, n, timeout=1.0):
         os.write(fd, cmd)
@@ -160,7 +175,7 @@ def settings(port, wait=30):
     fw = ask(b'g', 2)
     blv, fwv = (bl[0] << 8) | bl[1], (fw[0] << 8) | fw[1]
     print(f'Bootloader V{blv}, firmware V{fwv}')
-    b = [ask(bytes([ord('r'), off, 0]), 1)[0] for off in range(11)]
+    b = [ask(bytes([ord('r'), off, 0]), 1)[0] for off in range(12)]
     u16 = lambda o: b[o] | (b[o + 1] << 8)
     print('Raw settings:', ' '.join(f'{x:02x}' for x in b))
     mx = u16(3)
@@ -170,6 +185,7 @@ def settings(port, wait=30):
     print(f'  max speed        : {"no limit" if mx == 0 else f"{mx/10:.1f} km/h"}')
     print(f'  fan on at        : {u16(7)} °C')
     print(f'  magnets wheel/pedal: {b[9]} / {b[10]}')
+    print(f'  ride log         : {"on" if b[11] == 1 else "off"}')
     s = ask(b's', 1)
     print('Firmware started' if s == b'S' else f'Start answer: {s!r}')
     os.close(fd)
@@ -191,16 +207,7 @@ def upload(port, hexfile, wait=30):
 
     fd = open_port(port)
     print(f'Waiting for the bootloader (switch the C5 off and on if needed, up to {wait} s)...')
-    end = time.time() + wait
-    got = b''
-    while time.time() < end and b'B' not in got:
-        os.write(fd, b'e')
-        got += read_some(fd, 0.04)
-    if b'B' not in got:
-        os.close(fd)
-        raise SystemExit('Bootloader not found')
-    time.sleep(0.15)
-    termios.tcflush(fd, termios.TCIFLUSH)
+    blv = enter_bootloader(fd, wait)
 
     def rx(n, timeout=2.0):
         out = b''
@@ -209,9 +216,7 @@ def upload(port, hexfile, wait=30):
             out += read_some(fd, 0.05)
         return out
 
-    os.write(fd, b'v')
-    bl = rx(2)
-    print(f'Bootloader V{(bl[0] << 8) | bl[1]}' if len(bl) == 2 else f'no version answer: {bl!r}')
+    print(f'Bootloader V{blv}')
     print(f'Uploading firmware V{ver} ({hexfile})')
     os.write(fd, b'f')
     time.sleep(0.05)

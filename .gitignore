@@ -13,3 +13,4 @@ test/test_pedelec
 !release/*.hex
 !release/*.eep
 __pycache__/
+.DS_Store
