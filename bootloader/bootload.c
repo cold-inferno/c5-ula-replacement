@@ -33,7 +33,16 @@
 /******************************************************************************/
 /* Constants (#define)                *//*!@addtogroup define Constants *//*@{*/
 
-#define BL_VERSION    1042U
+/* 2026: V1043 = V1042 + watchdog fix + support for chips with 128-byte flash
+   pages (ATmega328P). The serial protocol is unchanged. */
+#define BL_VERSION    1043U
+
+/** @brief Size of one block in the upload protocol (fixed, 112 blocks)      */
+#define BLOCK_SIZE    64U
+
+#if (SPM_PAGESIZE < BLOCK_SIZE) || ((SPM_PAGESIZE % BLOCK_SIZE) != 0)
+  #error "flash page size must be a multiple of 64 bytes"
+#endif
 
 #define CMD_FLASH     'f'
 #define CMD_READ      'r'
@@ -86,6 +95,9 @@ void (*boot_Start)(void) = (void*)MEMPOS_BOOT;
 
 STATIC E_BOOL mg_WaitForEnter (void);
 STATIC void   mg_WritePage    (UINT8 u8Page, UINT8* au8Data);
+
+/** @brief 2026: collects 64-byte protocol blocks into one flash page        */
+STATIC UINT8  mg_au8Spm[SPM_PAGESIZE];
 /* End: Prototype declarations                                                */
 /******************************************************************************/
 
@@ -100,6 +112,13 @@ int main (void)
   UINT8             au8Page[64U];
   UINT8             u8Crc;
   CHAR              c;
+
+  /* 2026: after a watchdog reset the watchdog stays enabled (with the
+     shortest timeout) until it is switched off. Without this the bootloader
+     was reset every ~16 ms and never started the firmware again, so the
+     unit appeared dead until the C5 was switched off and on. */
+  MCUSR = 0U;
+  wdt_disable();
 
   LED1_DDR |= (1U << LED1_BIT);
   LED2_DDR |= (1U << LED2_BIT);
@@ -280,23 +299,39 @@ E_BOOL mg_WaitForEnter(void)
 
 void mg_WritePage (UINT8 u8Page, UINT8* au8Data)
 {
+  /* 2026: the protocol always sends 64-byte blocks. Chips with larger flash
+     pages (ATmega328P: 128 bytes) collect blocks until a page is complete.
+     The original wrote SPM_PAGESIZE bytes from the 64-byte buffer. */
+  UINT16 u16Addr = (UINT16)u8Page * BLOCK_SIZE;
+  UINT16 u16Off  = u16Addr % SPM_PAGESIZE;
+
+  for (UINT8 i = 0U; i < BLOCK_SIZE; i++)
+  {
+    mg_au8Spm[u16Off + i] = au8Data[i];
+  }
+  if ((u16Off + BLOCK_SIZE) < SPM_PAGESIZE)
+  {
+    return;                       // wait for the rest of this flash page
+  }
+  u16Addr -= u16Off;              // start address of the flash page
+
   eeprom_busy_wait();
-  
-  boot_page_erase(u8Page*64U);
-  boot_spm_busy_wait();      // Wait until the memory is erased.
-  
-  for (UINT8 wordIdx=0U; wordIdx<SPM_PAGESIZE; wordIdx+=2U)
+
+  boot_page_erase(u16Addr);
+  boot_spm_busy_wait();           // Wait until the memory is erased.
+
+  for (UINT16 wordIdx = 0U; wordIdx < SPM_PAGESIZE; wordIdx += 2U)
   {
     // Set up little-endian word.
-    UINT16 w = *au8Data++;
-    w += (*au8Data++) << 8U;
-    
-    boot_page_fill ((u8Page*64U) + wordIdx, w);
+    UINT16 w = mg_au8Spm[wordIdx];
+    w += (UINT16)mg_au8Spm[wordIdx + 1U] << 8U;
+
+    boot_page_fill (u16Addr + wordIdx, w);
   }
-  
-  boot_page_write (u8Page*64U);   // Store buffer in flash page.
+
+  boot_page_write (u16Addr);      // Store buffer in flash page.
   boot_spm_busy_wait();           // Wait until the memory is written.
-  
+
   // Reenable RWW-section again. We need this if we want to jump back
   // to the application after bootloading.
   boot_rww_enable();

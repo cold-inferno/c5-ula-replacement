@@ -41,7 +41,8 @@
 
 
 # MCU name
-MCU = atmega88
+# 2026: chip selectable: make MCU=atmega88 (original) or make MCU=atmega328p
+MCU ?= atmega88
 
 
 # Processor frequency.
@@ -66,7 +67,14 @@ F_CPU = 16000000
 
 MEMPOS_VER  = 0x1BFA
 MEMPOS_CRC  = 0x1BFC
+# Bootloader start: top 1 KB on the ATmega88 (efuse BOOTSZ=01), top 2 KB on
+# the ATmega328P (high fuse BOOTSZ=01 = 1024 words at word 0x3C00). The application layout (version/CRC at the end of
+# the first 7 KB) is the same on both chips, so tools and protocol are shared.
+ifeq ($(MCU),atmega328p)
+MEMPOS_BOOT = 0x7800
+else
 MEMPOS_BOOT = 0x1C00
+endif
 
 # Output format. (can be srec, ihex, binary)
 FORMAT = ihex

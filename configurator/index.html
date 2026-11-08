@@ -605,7 +605,7 @@ async function enterBootloader() {
   $('bootInfo').textContent = `Bootloader V${link.bootVersion}, firmware ${fwText}`;
   setStatus('configuration mode', 'boot');
   log(`Bootloader V${link.bootVersion}, firmware ${fwText}`);
-  if (link.bootVersion !== 1042) log('Note: this tool was written for bootloader V1042.');
+  if (link.bootVersion < 1042 || link.bootVersion > 1043) log('Note: this tool was written for bootloader V1042/V1043.');
   await readSettings();
 }
 
