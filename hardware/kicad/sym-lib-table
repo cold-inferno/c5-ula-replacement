@@ -1,0 +1,4 @@
+(sym_lib_table
+	(version 7)
+	(lib (name "ULA_Replacement_4Kicad-eagle-import") (type "KiCad") (uri "${KIPRJMOD}/ULA_Replacement_4Kicad-eagle-import.kicad_sym") (options "") (descr ""))
+)

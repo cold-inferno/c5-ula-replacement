@@ -14,3 +14,9 @@ test/test_pedelec
 !release/*.eep
 __pycache__/
 .DS_Store
+# KiCad local files
+*.kicad_prl
+*-backups/
+.history/
+*.lck
+fp-info-cache
