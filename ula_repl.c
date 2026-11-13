@@ -93,6 +93,11 @@ STATIC UINT8  mg_u8NumMagnetsPedal  = DEFAULT_MAGNET_NUMBER_PEDAL;
 
 /** @brief 2026: motor relay decision state                                  */
 STATIC S_PEDELEC_STATE mg_sPedelec;
+/** @brief V1203: stall protection state                                     */
+STATIC S_STALL_STATE   mg_sStall;
+/** @brief V1203: TRUE if a momentary overcurrent cut happened since the
+    stall protection last ran                                                */
+STATIC E_BOOL          mg_bOverSeen = FALSE;
 
 /* End: Local variables                                                 *//*@}*/
 /******************************************************************************/
@@ -177,20 +182,14 @@ int main (void)
   print_Hex32(safety_GetCRC());
   PRINT_P("\n\nBAT: " BATTERY_NAME "\n");
   
-  /* print settings on serial out */
-  PRINT_P("PM:  ");  print_U32(mg_bIsPedelec);
-  PRINT_P("\nWS:  "); print_U32(memory_Get()->u16WheelSize);
-  PRINT_P("mm\nLMX: "); print_U32(mg_u16SpeedLimitMax);
-  PRINT_P("\nLMN: "); print_U32(mg_u16SpeedLimitMin);
-  PRINT_P("\nFT:  "); print_U32(mg_u16FanTemp);
-  PRINT_P("\nNMT: "); print_U32(mg_u8NumMagnetsTacho);
-  PRINT_P("\nNMP: "); print_U32(mg_u8NumMagnetsPedal);
-  PRINT_P("\nLOG: "); print_U32(memory_Get()->u8LogEnable == 1U ? 1U : 0U);
-  PRINT_P("\n\n");
+  /* V1203: the settings are no longer printed here (it frees flash space);
+     read them in configuration mode with the configurator. */
+  PRINT_P("\n");
   
   /* put relay and speaker to default conditions */
   relay_Enable(FALSE);
   pedelec_Init(&mg_sPedelec, timer_GetSystemTime());
+  pedelec_StallInit(&mg_sStall);
 
   /* 2026: optional ride log (reset cause, events, black box) */
   ridelog_Init();
@@ -253,13 +252,34 @@ int main (void)
       current_UpdateSum();
     }
     
-    /* every 256ms: update average motor current */
-    if(TIMER_IS_TICK128())
+    /* every 64ms: update average motor current */
+    if(TIMER_IS_TICK64())
     {
       /* 2026: left LED bar shows speed while the motor button is released,
          motor current while it is pressed */
-      leds_SetLeftBar((ON == switch_Get()) ? TRUE : FALSE,
-                      pedelec_SpeedBarLevel(SPEED_GET()));
+      E_BOOL bButton = (ON == switch_Get()) ? TRUE : FALSE;
+      leds_SetLeftBar(bButton, pedelec_SpeedBarLevel(SPEED_GET()));
+      /* V1203: the motor can only draw current while the button is pressed
+         and the relay is enabled; otherwise the battery is resting */
+      if((FALSE != bButton) && (FALSE != bMotorEnabled))
+      {
+        voltage_MotorActive();
+      }
+      /* V1203: stall protection. Cuts the motor until the button is
+         released when the current stays high while the wheel doesn't turn.
+         It reports as a current error (LED3 fast, fast beeps). */
+      {
+        S_STALL_INPUT sStall;
+        sStall.u16Distance  = (UINT16)speed_GetDistance();
+        sStall.u16Current   = current_GetValue();
+        sStall.bButton      = bButton;
+        sStall.bOvercurrent = mg_bOverSeen;
+        mg_bOverSeen        = FALSE;
+        if(FALSE != pedelec_Stall(&mg_sStall, &sStall))
+        {
+          safety_SetCondition(COND_CURR_ERR);
+        }
+      }
       {
         S_RL_INPUT sLog;
         mg_LogInput(&sLog, bMotorEnabled);
@@ -341,12 +361,17 @@ E_BOOL mg_RelayControl (void)
 {
   S_PEDELEC_INPUT sIn;
   E_BOOL bRet;
+  E_BOOL bOver = (current_GetValue() >= MAX_CURRENT) ? TRUE : FALSE;
 
+  if(FALSE != bOver)
+  {
+    mg_bOverSeen = TRUE;         /* for the stall protection (64 ms tick) */
+  }
   sIn.u32Now       = timer_GetSystemTime();
   /* motor will be disabled immediately on any error condition or if the
      momentary motor load is too high */
   sIn.bSafetyCut   = ((safety_GetCondition() >= COND_VOLT_ERR) ||
-                      (current_GetValue() >= MAX_CURRENT)) ? TRUE : FALSE;
+                      (FALSE != bOver)) ? TRUE : FALSE;
   sIn.bPedelecMode = mg_bIsPedelec;
   sIn.bPedalling   = (pedal_GetTimeout() < PEDAL_TIMEOUT) ? TRUE : FALSE;
   sIn.u32Speed     = SPEED_GET();

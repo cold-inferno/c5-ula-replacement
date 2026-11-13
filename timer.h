@@ -22,8 +22,9 @@
 /** @brief No timer flags                                                     */
 #define NO_TICK   0U
 
-/** @brief Flag for 128ms events                                              */
-#define TICK128   1U
+/** @brief Flag for 64ms events (named TICK128 up to V1202, but the timer
+    has always set it every 64 ms)                                            */
+#define TICK64    1U
 
 /** @brief Flag for 256ms events                                              */
 #define TICK256   2U
@@ -40,8 +41,8 @@
 /******************************************************************************/
 /* Macro definitions (#define)           *//*!@addtogroup macros Macros *//*@{*/
 
-/** @brief This macro checks whether the 128ms time flag is set or not        */
-#define TIMER_IS_TICK128()   ((timer_GetTicks() & TICK128)  != NO_TICK)
+/** @brief This macro checks whether the 64ms time flag is set or not         */
+#define TIMER_IS_TICK64()    ((timer_GetTicks() & TICK64)   != NO_TICK)
 
 /** @brief This macro checks whether the 256ms time flag is set or not        */
 #define TIMER_IS_TICK256()   ((timer_GetTicks() & TICK256)  != NO_TICK)

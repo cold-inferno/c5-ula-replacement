@@ -189,8 +189,83 @@ static void test_time_wraparound(void)
   CHECK(run(&s, in, 0xFFFFFE00U, 0x00000400U) == TRUE, "dwell works across time wraparound");
 }
 
+/* ---- stall protection (one call = one 64 ms tick) ---- */
+static S_STALL_INPUT st_in(UINT32 dist, UINT16 curr, E_BOOL button)
+{
+  S_STALL_INPUT in;
+  in.u16Distance = (UINT16)dist; in.u16Current = curr; in.bButton = button;
+  in.bOvercurrent = (curr >= 523U) ? TRUE : FALSE;
+  return in;
+}
+/* fresh state; dist != 0: the wheel sensor has already given a pulse */
+static void st_init(S_STALL_STATE *s, UINT32 dist)
+{
+  S_STALL_INPUT in = st_in(dist, 0U, FALSE);
+  pedelec_StallInit(s);
+  (void)pedelec_Stall(s, &in);
+}
+/* run for ms milliseconds with the same inputs */
+static E_BOOL st_run(S_STALL_STATE *s, S_STALL_INPUT in, UINT32 ms)
+{
+  E_BOOL r = s->bLatched;
+  for (UINT32 t = 0U; t < ms; t += STALL_TICK_MS) { r = pedelec_Stall(s, &in); }
+  return r;
+}
+static void test_stall(void)
+{
+  S_STALL_STATE s;
+  /* blocked wheel after the sensor has been seen: cut after 3 s, not before */
+  st_init(&s, 1280U);
+  CHECK(st_run(&s, st_in(1280U, 400U, TRUE), 2900U) == FALSE, "stall: no cut before 3 s");
+  CHECK(st_run(&s, st_in(1280U, 400U, TRUE), 200U) == TRUE, "stall: cut after 3 s of high current without wheel pulse");
+  /* stays cut while the button is held, even when the current is gone and the wheel rolls */
+  CHECK(st_run(&s, st_in(1280U, 0U, TRUE), 6000U) == TRUE, "stall: stays cut while button held");
+  CHECK(st_run(&s, st_in(2560U, 0U, TRUE), 100U) == TRUE, "stall: wheel pulse doesn't release an active cut");
+  CHECK(st_run(&s, st_in(2560U, 0U, FALSE), 64U) == FALSE, "stall: released with the button");
+  CHECK(st_run(&s, st_in(2560U, 400U, TRUE), 2900U) == FALSE, "stall: full time again after release");
+
+  /* slow climb: high current, a wheel pulse every 2.5 s -> never cut */
+  st_init(&s, 640U);
+  E_BOOL any = FALSE;
+  for (UINT32 k = 0U; k < 200U; k++) any |= st_run(&s, st_in(1280U * (k + 1U), 400U, TRUE), 2500U);
+  CHECK(any == FALSE, "stall: no cut while the wheel keeps turning (1.8 km/h)");
+
+  /* current below the limit at standstill -> never cut */
+  st_init(&s, 1280U);
+  CHECK(st_run(&s, st_in(1280U, 200U, TRUE), 600000U) == FALSE, "stall: current below the limit never cuts");
+
+  /* no wheel sensor (distance stays 0): high current must not cut */
+  st_init(&s, 0U);
+  CHECK(st_run(&s, st_in(0U, 400U, TRUE), 600000U) == FALSE, "stall: inactive without a wheel sensor");
+
+  /* 140 A cuts retried every 0.5 s: third one latches, with or without sensor */
+  for (UINT32 dist = 0U; dist <= 1280U; dist += 1280U)
+  {
+    st_init(&s, dist);
+    E_BOOL r = FALSE; int trips = 0;
+    while ((r == FALSE) && (trips < 10))
+    {
+      r = st_run(&s, st_in(dist, 600U, TRUE), 64U); trips++;            /* overcurrent seen in one tick */
+      if (r == FALSE) { r = st_run(&s, st_in(dist, 0U, TRUE), 436U); }  /* relay open until the retry */
+    }
+    CHECK((r == TRUE) && (trips == 3), "stall: third overcurrent cut in a row latches");
+  }
+  /* overcurrent cuts with wheel pulses in between don't add up */
+  st_init(&s, 640U);
+  any = FALSE;
+  for (UINT32 k = 0U; k < 100U; k++)
+  {
+    any |= st_run(&s, st_in(1280U * (k + 1U), 600U, TRUE), 64U);
+    any |= st_run(&s, st_in(1280U * (k + 1U), 0U, TRUE), 436U);
+    any |= st_run(&s, st_in(1280U * (k + 1U), 600U, TRUE), 64U);
+    any |= st_run(&s, st_in(1280U * (k + 1U), 0U, TRUE), 436U);
+  }
+  CHECK(any == FALSE, "stall: overcurrent cuts while moving don't latch");
+}
+
 int main(void)
 {
+  test_stall();
   test_start_and_dwell();
   test_min_speed_hysteresis();
   test_max_speed_hysteresis();

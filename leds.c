@@ -181,8 +181,8 @@ void leds_ShowVoltage(void)
 
   if((safety_GetCondition() & COND_VOLT_ERR) != 0U)
   {
-    /* all LED flashing in case of a voltage error condidtion */
-    if((timer_GetSystemTime() & 256UL) == 0UL)
+    /* all LED flashing (fast, like every error) in case of a voltage error */
+    if(((UINT16)timer_GetSystemTime() & LED_FLASH_ERR) == 0U)
     {
       ALL_LEDS_ON();
     }
@@ -263,50 +263,37 @@ void leds_ShowCurrent(void)
   
   MUX_CURR();
   
-  if(safety_GetCondition() != COND_OK)
+  UINT8 u8Cond = (UINT8)safety_GetCondition();
+
+  if(u8Cond != (UINT8)COND_OK)
   {
-    if((timer_GetSystemTime() & 256UL) == 0UL)
+    /* V1203: fault code on the left bar. One LED per kind of fault, all
+       other LEDs off:
+         LED1 (bottom) = battery, LED3 (middle) = motor current,
+         LED5 (top)    = motor temperature
+       A warning flashes slowly (about 1 x per second), an error flashes
+       fast (about 4 x per second).
+       Up to V1202 the LEDs were only switched on here and never off, so the
+       code was mixed with the pattern of the battery bar, and three
+       different faults shared LED5. */
+    UINT16 u16Time = (UINT16)timer_GetSystemTime();
+    UINT8  u8Err   = (UINT8)(u8Cond >> 3U);          /* bit0 volt, 1 curr, 2 temp */
+    UINT8  u8Show  = 0U;
+
+    if((u16Time & LED_FLASH_ERR) == 0U)
     {
-      if ((safety_GetCondition() & COND_VOLT_WARN) != 0U)
-      {
-        /* LED5 indicates a voltage warning */
-        LED5_ON();
-      }
-      
-      if ((safety_GetCondition() & COND_VOLT_ERR) != 0U)
-      {
-        /* LED5 will also be flashing on voltage error */
-        LED5_ON();
-      }
-      
-      if ((safety_GetCondition() & COND_CURR_WARN) != 0U)
-      {
-        /* LED1 indicates a current warning */
-        LED5_ON();
-      }
-      
-      if ((safety_GetCondition() & COND_CURR_ERR) != 0U)
-      {
-        /* LED2 indicates a current error */
-        LED2_ON();
-      }
-      
-      if ((safety_GetCondition() & COND_TEMP_WARN) != 0U)
-      {
-        /* LED3 indicates a temperature warning */
-        LED3_ON();
-      }
-      
-      if ((safety_GetCondition() & COND_TEMP_ERR) != 0U)
-      {
-        /* LED4 indicates a temperature error */
-        LED4_ON();
-      }
+      u8Show = u8Err;
     }
-    else
+    if((u16Time & LED_FLASH_WARN) == 0U)
     {
-      ALL_LEDS_OFF();
+      u8Show |= (UINT8)(u8Cond & (UINT8)~u8Err);     /* warnings without error */
     }
+
+    if((u8Show & 1U) != 0U) { LED1_ON(); } else { LED1_OFF(); }
+    LED2_OFF();
+    if((u8Show & 2U) != 0U) { LED3_ON(); } else { LED3_OFF(); }
+    LED4_OFF();
+    if((u8Show & 4U) != 0U) { LED5_ON(); } else { LED5_OFF(); }
   }
   else if(FALSE == mg_bButton)
   {

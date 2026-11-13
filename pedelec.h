@@ -42,6 +42,20 @@
     Safety cut-offs (errors, overcurrent) always act immediately.            */
 #define RELAY_MIN_DWELL_MS   500U
 
+/** @brief V1203 stall protection: motor current (ADC value) that counts as
+    "high". 299 = about 80 A (the scale is 523 = 140 A). Cruising needs
+    20-30 A, a blocked motor draws well over 100 A.                           */
+#define STALL_CURRENT_ADC    299U
+/** @brief Stall protection is evaluated every 64 ms (one "tick").           */
+#define STALL_TICK_MS         64U
+/** @brief Stall protection: the motor is cut when the current has been high
+    for this many ticks in total without a single pulse from the wheel
+    sensor (47 x 64 ms = 3 s). One wheel turn (1.28 m) in 3 s is 1.5 km/h.    */
+#define STALL_TICKS           47U
+/** @brief Stall protection: every momentary overcurrent cut (140 A) counts
+    as this many ticks (about 1 s), so the third cut in a row without wheel
+    movement latches the protection instead of retrying forever.             */
+#define STALL_TRIP_TICKS      16U
 /** @brief Speed per LED of the speed bar, in 10th of km/h (50 = 5 km/h)     */
 #define SPEEDBAR_STEP         50U
 
@@ -76,6 +90,25 @@ typedef struct
   UINT32  u32LastSwitch;    // system time of the last relay change in ms
 } S_PEDELEC_STATE;
 
+/** @brief Inputs for the stall protection                                    */
+typedef struct
+{
+  UINT16  u16Distance;      // trip distance (lower 16 bits); changes with
+                            // every wheel pulse
+  UINT16  u16Current;       // motor current, ADC value
+  E_BOOL  bButton;          // TRUE: motor button pressed
+  E_BOOL  bOvercurrent;     // TRUE: a momentary overcurrent cut happened
+                            // since the previous call
+} S_STALL_INPUT;
+/** @brief Stall protection state kept between calls                         */
+typedef struct
+{
+  UINT16  u16Distance;      // distance at the previous call
+  UINT8   u8Ticks;          // high-current ticks without a wheel pulse
+  E_BOOL  bSensor;          // TRUE: the wheel sensor has given a pulse
+  E_BOOL  bOverPrev;        // overcurrent flag at the previous call
+  E_BOOL  bLatched;         // TRUE: motor cut until the button is released
+} S_STALL_STATE;
 /* End: Basic types (typedef)                                           *//*@}*/
 /******************************************************************************/
 
@@ -85,6 +118,9 @@ EXTERN void   pedelec_Init   (S_PEDELEC_STATE* psState, UINT32 u32Now);
 EXTERN E_BOOL pedelec_Decide (S_PEDELEC_STATE* psState,
                               const S_PEDELEC_INPUT* psIn);
 EXTERN UINT8  pedelec_SpeedBarLevel (UINT32 u32Speed);
+EXTERN void   pedelec_StallInit (S_STALL_STATE* psState);
+EXTERN E_BOOL pedelec_Stall  (S_STALL_STATE* psState,
+                              const S_STALL_INPUT* psIn);
 /* End: Prototype declarations                                                */
 /******************************************************************************/
 

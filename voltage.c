@@ -22,7 +22,6 @@
 
 #include "adc.h"
 #include "safety.h"
-#include "relay.h"
 
 #define EXPORT
   #include "voltage.h"
@@ -77,11 +76,11 @@ STATIC UINT16 mg_u16Avg                 = 0U;
 STATIC UINT8  mg_u8Idx                  = 0U;
 
 /** @brief 2026: resting battery voltage (ADC value * 16, filtered), updated
-    only while the motor relay has been off for VOLT_REST_SETTLE periods.     */
+    only while the motor has been off for VOLT_REST_SETTLE periods.           */
 STATIC UINT16 mg_u16Rest16              = 0U;
 
-/** @brief 2026: number of 512 ms periods the relay has been off              */
-STATIC UINT8  mg_u8RelayOffCnt          = 0U;
+/** @brief 2026: number of 512 ms periods the motor has been off              */
+STATIC UINT8  mg_u8MotorOffCnt          = 0U;
 
 /* End: Local variables                                                 *//*@}*/
 /******************************************************************************/
@@ -137,9 +136,9 @@ void voltage_Init (void)
   }
   mg_u16Avg = u16Help;
   mg_u8Idx = 0U;
-  /* the relay is off at power-on: the first reading is a resting voltage */
+  /* the motor is off at power-on: the first reading is a resting voltage */
   mg_u16Rest16     = (UINT16)(u16Help * 16U);
-  mg_u8RelayOffCnt = VOLT_REST_SETTLE;
+  mg_u8MotorOffCnt = VOLT_REST_SETTLE;
 }
 
 
@@ -202,14 +201,14 @@ void voltage_UpdateAvg (void)
   mg_u16Avg = u16Help;
 
 #if defined(BATTERY_LIFEPO4)
-  /* resting voltage: only while the motor relay has been off long enough */
-  if(FALSE != relay_IsEnabled())
+  /* resting voltage: only while the motor has been off long enough.
+     V1203: "motor off" is reported by the main loop (voltage_MotorActive(),
+     button pressed and relay enabled). Up to V1202 this looked at the relay
+     enable signal only, which is permanently on without pedal assist, so
+     the resting voltage froze at its power-on value. */
+  if(mg_u8MotorOffCnt < VOLT_REST_SETTLE)
   {
-    mg_u8RelayOffCnt = 0U;
-  }
-  else if(mg_u8RelayOffCnt < VOLT_REST_SETTLE)
-  {
-    mg_u8RelayOffCnt++;
+    mg_u8MotorOffCnt++;
   }
   else
   {
@@ -251,6 +250,14 @@ void voltage_UpdateAvg (void)
     safety_ClearCondition(COND_VOLT_ERR);
   }
 #endif
+}
+
+/** @brief V1203: tells this module that the motor can draw current right now
+    (motor button pressed while the relay is enabled). Called from the main
+    loop every 64 ms; restarts the settling time of the resting voltage.     */
+void voltage_MotorActive (void)
+{
+  mg_u8MotorOffCnt = 0U;
 }
 
 /** @brief 2026: returns the resting battery voltage as ADC value.            */

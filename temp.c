@@ -284,15 +284,19 @@ UINT16 temp_GetCelsius (UINT16 adc_val)
     {
       u16Ret = 55U;
     }
-    else if (u16NTC >= 800U)
+    /* V1203: the original table read 800 (60), 900 (65), 800 (70), so 65
+       and 70 could never be returned (60 jumped to 75). The 60/65/70 steps
+       are now evenly spaced between the neighbouring values; the points
+       where the warning (70) and the error (80) trigger are unchanged. */
+    else if (u16NTC >= 900U)
     {
       u16Ret = 60U;
     }
-    else if (u16NTC >= 900U)
+    else if (u16NTC >= 800U)
     {
       u16Ret = 65U;
     }
-    else if (u16NTC >= 800U)
+    else if (u16NTC >= 700U)
     {
       u16Ret = 70U;
     }

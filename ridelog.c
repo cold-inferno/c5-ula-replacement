@@ -286,7 +286,7 @@ void ridelog_Sample (const S_RL_INPUT* psIn)
 
 /**
 @brief  Detects new warnings/errors and a disconnected thermistor and logs
-        them (log on only, rate limited). Call periodically (e.g. 128 ms).
+        them (log on only, rate limited). Call periodically (e.g. 64 ms).
 */
 void ridelog_Check (const S_RL_INPUT* psIn)
 {

@@ -98,6 +98,82 @@ E_BOOL pedelec_Decide (S_PEDELEC_STATE* psState, const S_PEDELEC_INPUT* psIn)
   return (psState->bMotorOn);
 }
 
+/** @brief Resets the stall protection.                                       */
+void pedelec_StallInit (S_STALL_STATE* psState)
+{
+  psState->u16Distance = 0U;
+  psState->u8Ticks     = 0U;
+  psState->bSensor     = FALSE;
+  psState->bOverPrev   = FALSE;
+  psState->bLatched    = FALSE;
+}
+
+/**
+@brief  V1203: stall protection. Call every 64 ms (STALL_TICK_MS).
+
+        A blocked or nearly blocked motor draws a very high current that
+        nothing limited before (the temperature sensor reacts slowly, and the
+        140 A cut retried every half second forever).
+        This function counts the ticks with a high motor current
+        (STALL_CURRENT_ADC) during which the wheel sensor gave no pulse, plus
+        STALL_TRIP_TICKS for every momentary overcurrent cut. A wheel pulse
+        starts the count again. At STALL_TICKS the motor is cut and stays
+        cut until the motor button is released.
+
+        The high-current time is only counted once the wheel sensor has given
+        at least one pulse since power-on: a C5 without a wheel sensor must
+        not be cut at every start. Overcurrent cuts are counted either way.
+@param  psState  state, updated by this function
+@param  psIn     current inputs
+@return TRUE while the motor must stay off (until the button is released)
+*/
+E_BOOL pedelec_Stall (S_STALL_STATE* psState, const S_STALL_INPUT* psIn)
+{
+  UINT8  u8Ticks = psState->u8Ticks;
+  E_BOOL bMoved  = (psIn->u16Distance != psState->u16Distance) ? TRUE : FALSE;
+
+  if (FALSE != bMoved)
+  {
+    psState->bSensor = TRUE;       /* the wheel sensor exists and works */
+  }
+
+  if (FALSE == psIn->bButton)
+  {
+    /* button released: the rider reacted, start again */
+    u8Ticks = 0U;
+    psState->bLatched = FALSE;
+  }
+  else if (FALSE != bMoved)
+  {
+    /* the wheel is turning: no stall (an active cut stays until release) */
+    u8Ticks = 0U;
+  }
+  else
+  {
+    if ((FALSE != psIn->bOvercurrent) && (FALSE == psState->bOverPrev))
+    {
+      u8Ticks += STALL_TRIP_TICKS;
+    }
+    else if ((psIn->u16Current >= STALL_CURRENT_ADC) &&
+             (FALSE != psState->bSensor))
+    {
+      u8Ticks++;
+    }
+
+    if (u8Ticks >= STALL_TICKS)
+    {
+      u8Ticks = STALL_TICKS;
+      psState->bLatched = TRUE;
+    }
+  }
+
+  psState->u8Ticks     = u8Ticks;
+  psState->u16Distance = psIn->u16Distance;
+  psState->bOverPrev   = psIn->bOvercurrent;
+
+  return (psState->bLatched);
+}
+
 /**
 @brief  Converts the speed into the number of lit LEDs of the speed bar.
 @param  u32Speed  speed in 10th of km/h

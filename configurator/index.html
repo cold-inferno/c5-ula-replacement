@@ -60,6 +60,8 @@ section.tab { display: none; } section.tab.active { display: block; }
 .dot.on.g { background: #3fb950; border-color: #3fb950; }
 .dot.on.r { background: var(--err); border-color: var(--err); }
 .dot.blink { animation: blink .5s steps(1) infinite; }
+.dot.blink.slow { animation-duration: 1s; }
+.dot.blink.fast { animation-duration: .25s; }
 @keyframes blink { 50% { opacity: .15; } }
 .flag.warn { color: var(--warn); } .flag.err { color: var(--err); } .flag.ok { color: var(--ok); }
 form.settings { display: grid; grid-template-columns: 1fr; gap: 12px; }
@@ -96,13 +98,15 @@ table.ev th { color: var(--muted); font-weight: 500; }
   <span id="status" class="pill">not connected</span>
   <span class="spacer"></span>
   <button id="btnDemo" title="Simulated C5 for trying out the tool without hardware">Demo</button>
-  <button id="btnConnect" class="primary">Connect</button>
+  <button id="btnBle" title="Connect through an HM-10 / AT-09 Bluetooth LE serial module">Connect Bluetooth</button>
+  <button id="btnBleAll" title="Show every nearby Bluetooth device, not just HM-10 / AT-09 style names">All devices</button>
+  <button id="btnConnect" class="primary">Connect USB</button>
 </header>
 
 <main>
   <div id="noSerial" class="banner err" hidden>
-    <b>This browser can't talk to serial ports.</b>
-    Use Chrome, Edge or another Chromium-based browser on a computer (Web Serial). Safari and Firefox don't support it.
+    <b>This browser can't do USB serial or Bluetooth.</b>
+    USB needs Web Serial, Bluetooth needs Web Bluetooth: use Chrome or Edge on a computer (Bluetooth also works in Chrome on Android; on iPhone try the Bluefy browser). Safari and Firefox support neither.
     The Demo button still works here.
   </div>
   <div id="demoBanner" class="banner warn" hidden>
@@ -152,9 +156,9 @@ table.ev th { color: var(--muted); font-weight: 500; }
       <h2>Configuration mode</h2>
       <p class="small" style="margin-top:0">Settings can only be read and written by the bootloader, which listens for 2 seconds after the C5 is switched on.</p>
       <ol class="steps small">
-        <li>Connect the USB-serial adapter and click <b>Connect</b>.</li>
+        <li>Connect the USB-serial adapter and click <b>Connect USB</b>, or click <b>Connect Bluetooth</b> and pick your AT-09.</li>
         <li>Click <b>Enter configuration mode</b>.</li>
-        <li>Switch the C5 off and on again within 20 seconds.</li>
+        <li>Switch the C5 off and on again within 20 seconds. (Over Bluetooth the link drops while the module is unpowered; the tool reconnects by itself.)</li>
       </ol>
       <div class="actions">
         <button id="btnEnter" class="primary" disabled>Enter configuration mode</button>
@@ -169,7 +173,7 @@ table.ev th { color: var(--muted); font-weight: 500; }
         <div class="row"><label for="fPedelec">Pedal assist (pedelec)</label>
           <label class="switch"><input type="checkbox" id="fPedelec"> <span>motor only while pedalling</span></label></div>
         <div class="row"><label for="fWheel">Wheel circumference</label>
-          <div><input type="number" id="fWheel" min="300" max="3000" step="1"><span class="unit">mm</span></div>
+          <div><input type="number" id="fWheel" min="300" max="1500" step="1"><span class="unit">mm</span></div>
           <div class="hint">Of the wheel with the speed sensor magnet. 1280 mm = Schwalbe Big Apple.</div></div>
         <div class="row"><label for="fMin">Minimum speed</label>
           <div><input type="number" id="fMin" min="0" max="20" step="0.1"><span class="unit">km/h</span></div>
@@ -202,7 +206,7 @@ table.ev th { color: var(--muted); font-weight: 500; }
     <div class="card">
       <h2>Ride log</h2>
       <p class="small" style="margin-top:0">Needs configuration mode (see Settings) and firmware V1202+ with the ride log switched on.
-        Reading takes about 10 seconds.</p>
+        Reading takes about 10 seconds over USB and longer over Bluetooth.</p>
       <div class="actions">
         <button id="btnLogRead" class="primary" disabled>Read log</button>
         <button id="btnLogCsv" disabled>Save black box as CSV</button>
@@ -224,6 +228,7 @@ table.ev th { color: var(--muted); font-weight: 500; }
       <dl class="kv" style="margin-top:12px">
         <dt>File</dt><dd id="hName">–</dd>
         <dt>Version</dt><dd id="hVer">–</dd>
+        <dt>Built for</dt><dd id="hChip">–</dd>
         <dt>Size</dt><dd id="hSize">–</dd>
         <dt>Checksum</dt><dd id="hCrc">–</dd>
       </dl>
@@ -231,6 +236,7 @@ table.ev th { color: var(--muted); font-weight: 500; }
     <div class="card">
       <h2>Upload</h2>
       <p class="small" style="margin-top:0">Needs configuration mode (see Settings). Your settings are kept. If the upload is interrupted, the bootloader stays intact: just enter configuration mode and upload again.</p>
+      <p id="bleNoFlash" class="small warn-t" hidden>Firmware upload is switched off over Bluetooth: a dropped link would leave half a firmware on the chip. Connect the USB-serial adapter for this.</p>
       <progress id="prog" max="112" value="0"></progress>
       <div class="actions">
         <button id="btnFlash" class="primary" disabled>Upload firmware</button>
@@ -252,16 +258,17 @@ table.ev th { color: var(--muted); font-weight: 500; }
 <script>
 'use strict';
 /* ---------------------------------------------------------------------------
-   Protocol of the ULA replacement bootloader (bootloader/bootload.c, V1042):
+   Protocol of the ULA replacement bootloader (bootloader/bootload.c, V1042..V1044):
    after power-on it waits 2 s for 'e'; then single-byte commands:
      e -> 'B'                 v -> BL version (hi, lo)    g -> FW version (hi, lo)
      r lo hi -> 1 byte        w lo hi val -> 'D'          (EEPROM, offset in settings struct)
      f, then 112 x (64 bytes + 8-bit sum) -> 'O' per page ('E' on bad sum), then 'D'
      s -> 'S' and start firmware      x -> reset
    Settings struct (packed, little endian): 0 pedelec(u8) 1 wheel(u16) 3 max(u16)
-     5 min(u16) 7 fanTemp(u16) 9 magnetsWheel(u8) 10 magnetsPedal(u8)
+     5 min(u16) 7 fanTemp(u16) 9 magnetsWheel(u8) 10 magnetsPedal(u8) 11 rideLog(u8)
    ------------------------------------------------------------------------- */
 const PAGES = 112, PAGE = 64, APP_END = 0x1C00, MEMPOS_VER = 0x1BFA, MEMPOS_CRC = 0x1BFC;
+const CHIP_NAME = { m88: 'ATmega88', m328p: 'ATmega328P' };
 const FW_NO_MAX_SUPPORT = 1200; // firmware versions >= this accept max speed 0 = no limit
 
 const $ = id => document.getElementById(id);
@@ -281,7 +288,7 @@ function adcToCelsius(adc) {                             // temp.c temp_GetCelsi
   if (!adc) return 85;
   const ntc = Math.floor(1024 * 1100 / adc) - 1100;
   const table = [[12500,0],[9000,5],[7500,10],[6000,15],[4700,20],[3800,25],[3300,30],[2500,35],
-                 [2000,40],[1700,45],[1200,50],[1000,55],[800,60],[900,65],[800,70],[600,75],[500,80]];
+                 [2000,40],[1700,45],[1200,50],[1000,55],[900,60],[800,65],[700,70],[600,75],[500,80]];
   for (const [lim, deg] of table) if (ntc >= lim) return deg;
   return 85;
 }
@@ -335,7 +342,13 @@ function parseHex(text) {
   const version = mem[MEMPOS_VER] | (mem[MEMPOS_VER + 1] << 8);
   const stored = (mem[MEMPOS_CRC] | (mem[MEMPOS_CRC + 1] << 8) | (mem[MEMPOS_CRC + 2] << 16) | (mem[MEMPOS_CRC + 3] << 24)) >>> 0;
   const codeEnd = (() => { for (let a = MEMPOS_VER - 1; a >= 0; a--) if (mem[a] !== 0xFF) return a + 1; return 0; })();
-  return { mem, version, stored, computed: fwCrc(mem), codeEnd };
+  /* Which chip is the file built for? The interrupt vector table at address 0 tells.
+     ATmega328P entries are 4 bytes: 'jmp' (0C 94 lo hi) or, after linker relaxation, 'rjmp' + 'nop'
+     (.. Cx 00 00). ATmega88 entries are 2 bytes, so two 'rjmp' follow each other (.. Cx .. Cx). */
+  let chip = null;
+  if (mem[0] === 0x0C && mem[1] === 0x94) chip = 'm328p';
+  else if ((mem[1] & 0xF0) === 0xC0) chip = (mem[2] === 0 && mem[3] === 0) ? 'm328p' : ((mem[3] & 0xF0) === 0xC0 ? 'm88' : null);
+  return { mem, version, stored, computed: fwCrc(mem), codeEnd, chip };
 }
 
 /* ---------------- transport: real Web Serial port or simulated C5 ---------------- */
@@ -370,12 +383,95 @@ class SerialTransport {
   }
 }
 
+/* HM-10 / AT-09 Bluetooth LE serial modules expose one UART-like characteristic:
+   service 0xFFE0, characteristic 0xFFE1 (notifications = bytes from the C5, writes = bytes to the C5).
+   The module's UART side must run at 9600 baud (factory default). BLE writes are limited to 20 bytes,
+   so writes are split and paced to the UART speed so the module's buffer never overflows. */
+const BLE_SERVICE = '0000ffe0-0000-1000-8000-00805f9b34fb', BLE_CHAR = '0000ffe1-0000-1000-8000-00805f9b34fb', BLE_CHUNK = 20, BLE_UART_BAUD = 9600, BLE_RECONNECT_MS = 25000;
+class BleTransport {
+  constructor(device) {
+    this.device = device; this.onData = null; this.onClose = null;
+    this.char = null; this.closing = false; this.reconnecting = false; this.txQueue = Promise.resolve();
+    this.label = 'Bluetooth: ' + (device.name || 'unnamed module'); this.isBle = true;
+    this.onValue = e => { const v = e.target.value; if (this.onData) this.onData(new Uint8Array(v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength))); };
+    this.onDisc = () => this.lost();
+  }
+  async connectGatt() {
+    const server = await this.device.gatt.connect();
+    const svc = await server.getPrimaryService(BLE_SERVICE);
+    const chr = await svc.getCharacteristic(BLE_CHAR);
+    // one shared handler: if a reconnect hands back the same characteristic object, it is not added twice
+    chr.removeEventListener('characteristicvaluechanged', this.onValue);
+    chr.addEventListener('characteristicvaluechanged', this.onValue);
+    await chr.startNotifications();
+    this.char = chr;
+  }
+  async open() {
+    this.device.addEventListener('gattserverdisconnected', this.onDisc);
+    try { await this.connectGatt(); }
+    catch (e) {
+      this.closing = true;
+      this.device.removeEventListener('gattserverdisconnected', this.onDisc);
+      try { this.device.gatt.disconnect(); } catch (_) {}
+      if (e.name === 'NotFoundError') throw new Error('This device has no 0xFFE0/0xFFE1 serial service. Is it an HM-10 / AT-09 module?');
+      throw e;
+    }
+    this.openedMsg = `Bluetooth connected to ${this.device.name || 'module'} (module UART assumed to be 9600 baud)`;
+  }
+  lost() {   // link dropped: the C5 was power-cycled (module unpowered), or the module went out of range
+    this.char = null;
+    if (this.closing || this.reconnecting) return;
+    this.reconnecting = true;
+    log('Bluetooth link dropped, reconnecting…');
+    if (link.mode !== 'connecting') setStatus('reconnecting…', 'boot');
+    (async () => {
+      const until = performance.now() + BLE_RECONNECT_MS;
+      while (!this.closing && performance.now() < until) {
+        try {
+          await this.connectGatt();
+          this.reconnecting = false;
+          log('Bluetooth reconnected');
+          if (link.mode === 'app') setStatus(appStatusText(), 'ok');
+          else if (link.mode === 'boot') setStatus('configuration mode', 'boot');
+          return;
+        } catch (e) { await sleep(150); }
+      }
+      this.reconnecting = false;
+      if (!this.closing && this.onClose) this.onClose();
+    })();
+  }
+  write(bytes) {
+    const job = this.txQueue.then(async () => {
+      try {
+        for (let i = 0; i < bytes.length; i += BLE_CHUNK) {
+          if (!this.char) throw new Error('Bluetooth connection lost');
+          const chunk = bytes.slice(i, i + BLE_CHUNK);
+          if (this.char.properties.writeWithoutResponse) await this.char.writeValueWithoutResponse(chunk);
+          else await this.char.writeValueWithResponse(chunk);
+          await sleep(Math.ceil(chunk.length * 10000 / BLE_UART_BAUD) + 5);   // 10 bits per byte on the UART
+        }
+      } catch (e) {
+        if (link.mode === 'connecting') return;   // while waiting for the power cycle, lost bytes are simply retried
+        throw e;
+      }
+    });
+    this.txQueue = job.catch(() => {});
+    return job;
+  }
+  async close() {
+    this.closing = true;
+    this.device.removeEventListener('gattserverdisconnected', this.onDisc);
+    try { if (this.device.gatt.connected) this.device.gatt.disconnect(); } catch (e) {}
+    this.char = null;
+  }
+}
+
 class MockC5 {
   /* Simulates the ULA replacement: bootloader + firmware V1200 telemetry */
   constructor() {
     this.onData = null; this.onClose = null;
     this.eeprom = MockC5.demoEeprom();
-    this.fwVersion = 1202; this.state = 'app'; this.flashBuf = null; this.t0 = performance.now(); this.dist = 0;
+    this.fwVersion = 1203; this.state = 'app'; this.flashBuf = null; this.t0 = performance.now(); this.dist = 0;
   }
   static demoEeprom() {   // 1 KB EEPROM with settings and an example ride log
     const e = new Array(1024).fill(0xFF);
@@ -398,7 +494,7 @@ class MockC5 {
     }
     return e;
   }
-  async open() { this.emitText('ULA replacement V1202\n\nCRC: 0xA164FAFF\n\nBAT: LiFePO4\n'); this.startApp(false); }
+  async open() { this.emitText('ULA replacement V1203\n\nCRC: 0xA164FAFF\n\nBAT: LiFePO4\n'); this.startApp(false); }
   async close() { clearInterval(this.timer); clearTimeout(this.bootTimer); if (this.onClose) this.onClose(); }
   emit(bytes) { setTimeout(() => this.onData && this.onData(Uint8Array.from(bytes)), 3); }
   emitText(s) { this.emit([...s.replace(/\n/g, '\r\n')].map(c => c.charCodeAt(0))); }
@@ -455,7 +551,7 @@ class MockC5 {
     if (this.state !== 'boot') return;   // firmware ignores input
     switch (c) {
       case 'e': this.emit([0x42]); break;
-      case 'v': this.emit([1042 >> 8, 1042 & 0xFF]); break;
+      case 'v': this.emit([1044 >> 8, 1044 & 0xFF]); break;
       case 'g': this.emit([this.fwVersion >> 8, this.fwVersion & 0xFF]); break;
       case 'r': this.cmd = 'r'; this.need = 2; this.args = []; this.state = 'arg'; break;
       case 'w': this.cmd = 'w'; this.need = 3; this.args = []; this.state = 'arg'; break;
@@ -476,7 +572,7 @@ class MockC5 {
 /* ---------------- link: byte queue + text line parser ---------------- */
 const link = {
   t: null, mode: 'none', /* none | app | connecting | boot */
-  q: [], waiter: null, line: '', bootVersion: 0, fwVersion: 0,
+  q: [], waiter: null, line: '', bootVersion: 0, fwVersion: 0, chip: null,
   onBytes(bytes) {
     for (const b of bytes) {
       if (this.mode === 'boot' || this.mode === 'connecting') {
@@ -509,17 +605,22 @@ const ch = c => c.charCodeAt(0);
 /* ---------------- UI state ---------------- */
 let busy = false, settings = null, hexImage = null, isDemo = false, logImage = null, logBbRows = [];
 function setStatus(text, cls = '') { const s = $('status'); s.textContent = text; s.className = 'pill ' + cls; }
+const appStatusText = () => isDemo ? 'demo: firmware running' : 'connected' + (link.t && link.t.label ? ' · ' + link.t.label : '');
 function refreshButtons() {
   const connected = !!link.t, boot = link.mode === 'boot';
   $('btnEnter').disabled = !connected || boot || busy;
   $('btnStart').disabled = !boot || busy;
   $('btnRead').disabled = !boot || busy;
   $('btnWrite').disabled = !boot || busy || !settings;
-  $('btnFlash').disabled = !boot || busy || !hexImage;
+  const ble = !!(link.t && link.t.isBle);
+  $('btnFlash').disabled = !boot || busy || !hexImage || ble;
+  $('bleNoFlash').hidden = !ble;
   $('btnLogRead').disabled = !boot || busy;
   $('btnLogClear').disabled = !boot || busy || !logImage;
   $('btnLogCsv').disabled = !logBbRows.length;
-  $('btnConnect').textContent = connected ? 'Disconnect' : 'Connect';
+  $('btnConnect').textContent = connected ? 'Disconnect' : 'Connect USB';
+  $('btnBle').hidden = connected;
+  $('btnBleAll').hidden = connected;
   $('btnDemo').disabled = connected;
 }
 async function withBusy(fn) {
@@ -541,12 +642,12 @@ async function attach(t) {
   t.onData = bytes => link.onBytes(bytes);
   t.onClose = () => { if (link.t === t) detach('connection closed'); };
   await t.open();
-  setStatus(isDemo ? 'demo: firmware running' : 'connected', 'ok');
-  log(isDemo ? 'Demo C5 connected' : 'Serial port opened (9600 baud)');
+  setStatus(appStatusText(), 'ok');
+  log(isDemo ? 'Demo C5 connected' : (t.openedMsg || 'Serial port opened (9600 baud)'));
   refreshButtons();
 }
 async function detach(reason) {
-  const t = link.t; link.t = null; link.mode = 'none';
+  const t = link.t; link.t = null; link.mode = 'none'; link.chip = null;
   if (t) { t.onClose = null; try { await t.close(); } catch (e) {} }
   isDemo = false; $('demoBanner').hidden = true;
   setStatus('not connected'); $('bootInfo').textContent = '';
@@ -561,10 +662,27 @@ $('btnConnect').addEventListener('click', async () => {
     await attach(new SerialTransport(port));
   } catch (e) { if (e.name !== 'NotFoundError') { log('ERROR: ' + e.message); setStatus('connection failed', 'err'); } }
 });
+/* Names HM-10 / AT-09 clones commonly advertise. Add your own prefix here if yours is called something else. */
+const BLE_NAME_PREFIXES = ['AT-09', 'HMSoft', 'HM-10', 'BT05', 'MLT-BT05', 'CC41', 'JDY', 'BLE'];
+async function connectBle(showAll) {
+  if (!('bluetooth' in navigator)) { $('noSerial').hidden = false; return; }
+  let device;
+  try {   // HM-10 clones often don't advertise the 0xFFE0 service, so filter by name (or show everything on request)
+    const opts = showAll
+      ? { acceptAllDevices: true, optionalServices: [BLE_SERVICE] }
+      : { filters: [...BLE_NAME_PREFIXES.map(namePrefix => ({ namePrefix })), { services: [BLE_SERVICE] }], optionalServices: [BLE_SERVICE] };
+    device = await navigator.bluetooth.requestDevice(opts);
+  } catch (e) { if (e.name !== 'NotFoundError') { log('ERROR: ' + e.message); setStatus('connection failed', 'err'); } return; }
+  setStatus('connecting…', 'boot');
+  try { await attach(new BleTransport(device)); }
+  catch (e) { await detach(); log('ERROR: ' + e.message); setStatus('connection failed', 'err'); }
+}
+$('btnBle').addEventListener('click', () => connectBle(false));
+$('btnBleAll').addEventListener('click', () => connectBle(true));
 $('btnDemo').addEventListener('click', async () => {
   isDemo = true; $('demoBanner').hidden = false; await attach(new MockC5());
 });
-if (!('serial' in navigator)) $('noSerial').hidden = false;
+if (!('serial' in navigator) && !('bluetooth' in navigator)) $('noSerial').hidden = false;
 
 /* ---------------- live data ---------------- */
 const fmt = (v, d = 1) => Number.isFinite(v) ? v.toFixed(d) : '–';
@@ -593,7 +711,7 @@ function showTelemetry(l) {
   $('tCurrRaw').textContent = `ADC ${curr} · approx.`;
   $('tRelay').textContent = ena ? 'ON' : 'off';
   $('tRelay').className = 'v ' + (ena ? 'ok-t' : '');
-  $('tSwitch').textContent = `button ${sw > 100 ? 'pressed' : 'released'}`;
+  $('tSwitch').textContent = `button ${sw > SWITCH_ON_ADC ? 'pressed' : 'released'}`;
   $('tTemp').innerHTML = `${adcToCelsius(temp)}<small>°C</small>`;
   $('tTempRaw').textContent = `ADC ${temp}`;
   const flags = COND.filter(([bit]) => cond & bit);
@@ -601,9 +719,19 @@ function showTelemetry(l) {
                                        : '<span class="flag ok">all OK</span>';
   // pod LEDs (approximation of what leds.c shows)
   const pressed = sw > SWITCH_ON_ADC;
-  if (cond) {
+  if (cond && link.fwVersion && link.fwVersion < 1203) {
     dots($('lLeft'), 5, 'r', false); $('lLeftName').textContent = 'left';
-    $('lNote').textContent = 'left bar flashes a warning/error code';
+    $('lNote').textContent = 'left bar flashes a warning/error code (clear codes need V1203+)';
+  } else if (cond) {
+    // V1203: LED1 = battery, LED3 = current, LED5 = temperature; warning flashes slowly, error fast
+    const kinds = [[0, 1, 8, 'battery'], [2, 2, 16, 'current'], [4, 4, 32, 'temperature']], on = {}, names = [];
+    for (const [led, w, e, name] of kinds) {
+      if (cond & e) { on[led] = 'fast'; names.push(`LED${led + 1} fast = ${name} error`); }
+      else if (cond & w) { on[led] = 'slow'; names.push(`LED${led + 1} slow = ${name} warning`); }
+    }
+    $('lLeft').innerHTML = [0, 1, 2, 3, 4].map(i => `<span class="dot ${on[i] ? 'on r blink ' + on[i] : ''}"></span>`).join('');
+    $('lLeftName').textContent = 'fault';
+    $('lNote').textContent = names.join(', ');
   } else if (pressed) {
     dots($('lLeft'), CURR_LED.filter(t => curr >= t).length, 'g'); $('lLeftName').textContent = 'current';
     $('lNote').textContent = 'button pressed: left bar = motor current';
@@ -614,7 +742,7 @@ function showTelemetry(l) {
   }
   const lead = /lead/i.test($('dBat').textContent);
   const vbar = lead ? volt : (rest ?? volt);
-  if (cond & 8) dots($('lRight'), 5, 'r'); else dots($('lRight'), (lead ? VOLT_LED_LEAD : VOLT_LED_LFP).filter(t => vbar >= t).length);
+  if (cond & 8) $('lRight').innerHTML = '<span class="dot on r blink fast"></span>'.repeat(5); else dots($('lRight'), (lead ? VOLT_LED_LEAD : VOLT_LED_LFP).filter(t => vbar >= t).length);
   const s = Math.floor(time / 1000);
   $('tTime').textContent = `uptime ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
@@ -623,7 +751,7 @@ function showTelemetry(l) {
 $('btnEnter').addEventListener('click', () => withBusy(async () => {
   try { await enterBootloader(); }
   catch (e) {
-    if (link.mode !== 'boot' && link.t) { link.mode = 'app'; setStatus(isDemo ? 'demo: firmware running' : 'connected', 'ok'); $('bootInfo').textContent = ''; }
+    if (link.mode !== 'boot' && link.t) { link.mode = 'app'; setStatus(appStatusText(), 'ok'); $('bootInfo').textContent = ''; }
     throw e;
   }
 }));
@@ -640,13 +768,18 @@ async function enterBootloader() {
     await sleep(40);
     found = link.q.includes(ch('B'));
   }
-  if (!found) { link.mode = 'app'; setStatus('connected', 'ok'); $('bootInfo').textContent = ''; throw new Error('Bootloader not found. Is the C5 switched on again, and are TX/RX wired correctly?'); }
+  if (!found) { link.mode = 'app'; setStatus(appStatusText(), 'ok'); $('bootInfo').textContent = ''; throw new Error('Bootloader not found. Is the C5 switched on again, and are TX/RX wired correctly?'); }
   await sleep(150); link.flush();
   // confirm with a version query, so a stray 'B' in text output can't fool us
   await link.send([ch('v')]);
   const [vh, vl] = await link.read(2, 800);
   link.bootVersion = (vh << 8) | vl;
-  if (link.bootVersion < 1000 || link.bootVersion > 9999) throw new Error('unexpected bootloader answer');
+  // Real versions are 1042 and up (high byte 0x04). The firmware's own text output never contains
+  // a byte 0x04, so its "BAT:" line plus status text can no longer pass as a bootloader.
+  if (link.bootVersion < 1040 || link.bootVersion > 1279) {
+    link.mode = 'app'; setStatus(appStatusText(), 'ok'); $('bootInfo').textContent = '';
+    throw new Error('The bootloader did not answer (the 2-second window after power-on was missed). Click "Enter configuration mode" and switch the C5 off and on again.');
+  }
   await link.send([ch('g')]);
   const [fh, fl] = await link.read(2, 800);
   link.fwVersion = (fh << 8) | fl;
@@ -656,8 +789,21 @@ async function enterBootloader() {
   $('bootInfo').textContent = `Bootloader V${link.bootVersion}, firmware ${fwText}`;
   setStatus('configuration mode', 'boot');
   log(`Bootloader V${link.bootVersion}, firmware ${fwText}`);
-  if (link.bootVersion < 1042 || link.bootVersion > 1043) log('Note: this tool was written for bootloader V1042/V1043.');
   await readSettings();
+  await detectChip();
+  $('bootInfo').textContent += link.chip ? ` · ${CHIP_NAME[link.chip]}` : ' · chip unknown';
+}
+
+/* Which chip is on the board? The bootloader has no command for that, but the memory size tells:
+   the ATmega88 has 512 bytes of EEPROM, so address 512+n reads the same byte as n (the address
+   wraps); the ATmega328P has 1024 bytes, where 512+n is ride-log space with different contents.
+   Works with every bootloader version and writes nothing. */
+async function detectChip() {
+  const low = settings.raw, high = [];
+  for (let off = 0; off < 12; off++) high.push(await readEeprom(512 + off));
+  if (low.every(b => b === low[0])) link.chip = null;              // blank memory: can't tell
+  else link.chip = low.every((b, i) => b === high[i]) ? 'm88' : 'm328p';
+  log('Chip on the board: ' + (link.chip ? CHIP_NAME[link.chip] : 'could not be determined (settings memory is blank)'));
 }
 
 async function readSettings() {
@@ -700,7 +846,7 @@ function readForm() {
   };
   const s = {
     pedelec: $('fPedelec').checked,
-    wheel: num('fWheel', 300, 3000, 'Wheel circumference'),
+    wheel: num('fWheel', 300, 1500, 'Wheel circumference'),
     min: num('fMin', 0, 20, 'Minimum speed', 10),
     max: $('fMaxOn').checked ? num('fMax', 5, 60, 'Maximum speed', 10) : 0,
     fan: num('fFan', 20, 80, 'Fan temperature'),
@@ -736,7 +882,7 @@ $('btnStart').addEventListener('click', () => withBusy(async () => {
   await link.send([ch('s')]);
   const r = await link.readByte(800).catch(() => null);
   link.mode = 'app';
-  setStatus(isDemo ? 'demo: firmware running' : 'connected', 'ok');
+  setStatus(appStatusText(), 'ok');
   $('bootInfo').textContent = '';
   log(r === ch('S') ? 'Firmware started' : 'Start command sent');
 }));
@@ -751,13 +897,14 @@ $('fileHex').addEventListener('change', async e => {
     hexImage = img;
     $('hVer').textContent = 'V' + img.version;
     $('hSize').textContent = `${img.codeEnd} of ${MEMPOS_VER} bytes`;
+    $('hChip').textContent = img.chip ? CHIP_NAME[img.chip] : 'unknown chip';
     const ok = img.stored === img.computed;
     $('hCrc').innerHTML = ok ? `<span class="ok-t">OK (0x${img.computed.toString(16).toUpperCase()})</span>`
       : `<span class="err-t">wrong: file says 0x${img.stored.toString(16).toUpperCase()}, contents give 0x${img.computed.toString(16).toUpperCase()}. The C5 would refuse to run it.</span>`;
     if (!ok) hexImage = null;
     log(`Loaded ${file.name}: V${img.version}, ${img.codeEnd} bytes, CRC ${ok ? 'OK' : 'WRONG'}`);
   } catch (err) {
-    $('hVer').textContent = $('hSize').textContent = '–';
+    $('hVer').textContent = $('hSize').textContent = $('hChip').textContent = '–';
     $('hCrc').innerHTML = `<span class="err-t">${err.message}</span>`;
     log('ERROR: ' + err.message);
   }
@@ -765,6 +912,17 @@ $('fileHex').addEventListener('change', async e => {
 });
 $('btnFlash').addEventListener('click', () => withBusy(async () => {
   const img = hexImage;
+  if (link.t.isBle) throw new Error('Firmware upload is switched off over Bluetooth. Use the USB-serial adapter.');
+  // wrong-chip check: a file for the other chip passes every checksum but leaves the board dead
+  if (!link.chip) await detectChip();
+  if (img.chip && link.chip && img.chip !== link.chip) {
+    $('flashMsg').textContent = `Not uploaded: this file is for the ${CHIP_NAME[img.chip]}, the board has an ${CHIP_NAME[link.chip]}. Pick the file ending in _${link.chip}.hex.`;
+    throw new Error(`wrong firmware file: built for ${CHIP_NAME[img.chip]}, board has ${CHIP_NAME[link.chip]}`);
+  }
+  if (!img.chip || !link.chip) {
+    const what = !img.chip ? "This file doesn't show which chip it was built for." : "The chip on the board could not be determined.";
+    if (!confirm(`${what}\n\nFirmware for the wrong chip leaves the board dead until the right file is uploaded.\nFile: ${img.chip ? CHIP_NAME[img.chip] : 'unknown'} · Board: ${link.chip ? CHIP_NAME[link.chip] : 'unknown'}\n\nUpload anyway?`)) { $('flashMsg').textContent = 'Upload cancelled.'; return; }
+  }
   $('flashMsg').textContent = 'Uploading…'; $('prog').value = 0;
   log(`Uploading firmware V${img.version}`);
   link.flush();

@@ -18,6 +18,12 @@
 
 /******************************************************************************/
 /* Constants (#define)                *//*!@addtogroup define Constants *//*@{*/
+
+/** @brief V1203: flash timing of fault codes, as bit of the system time in
+    ms. The LED (and buzzer) is on while the bit is 0.
+    Error: 128 ms on / 128 ms off (fast). Warning: 512 ms on / 512 ms off.   */
+#define LED_FLASH_ERR     128U
+#define LED_FLASH_WARN    512U
 /* End: define Constants                                                *//*@}*/
 /******************************************************************************/
 

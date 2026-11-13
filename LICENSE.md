@@ -28,7 +28,7 @@ The NonCommercial condition means this is *source-available*, not open source in
 
 ## Changes
 
-Modified in 2026 (firmware V1200–V1202, bootloader V1043–V1044, configurator, tools,
+Modified in 2026 (firmware V1200–V1203, bootloader V1043–V1044, configurator, tools,
 KiCad conversion). The changes are listed in `README.md` and in the git history. Every
 original source file keeps its author and license header; files added in 2026 carry the
 same license header.

@@ -122,35 +122,45 @@ ISR (TIMER2_COMPA_vect)
   
   if(0UL == (mg_u32SystemTime & 1023UL))
   {
-    mg_u8Ticks |= (TICK128 | TICK256 | TICK512 |TICK1024);
+    mg_u8Ticks |= (TICK64 | TICK256 | TICK512 |TICK1024);
   }
   else if(0UL == (mg_u32SystemTime & 511UL))
   {
-    mg_u8Ticks |= (TICK128 | TICK256 | TICK512);
+    mg_u8Ticks |= (TICK64 | TICK256 | TICK512);
   }
   else if(0UL == (mg_u32SystemTime & 255UL))
   {
-    mg_u8Ticks |= (TICK128 | TICK256);
+    mg_u8Ticks |= (TICK64 | TICK256);
   }
   else if(0UL == (mg_u32SystemTime & 63UL))
   {
-    mg_u8Ticks |= (TICK128);
+    mg_u8Ticks |= (TICK64);
   }
   
-  /* activate the speaker in case of a warning condition */
-  if( (safety_GetCondition() &  (COND_CURR_WARN
-                                |COND_TEMP_WARN
-                                |COND_CURR_ERR
-                                |COND_TEMP_ERR)) != 0U )
+  /* activate the speaker in case of a current or temperature condition.
+     V1203: same rhythm as the fault LEDs: fast beeps for an error, slow
+     beeps for a warning (battery faults stay silent, as before). */
   {
-    if((mg_u32SystemTime & 256UL) == 0UL)
+    UINT8  u8Cond = (UINT8)safety_GetCondition();
+    UINT16 u16Bit = 0U;
+
+    if((u8Cond & (COND_CURR_ERR | COND_TEMP_ERR)) != 0U)
+    {
+      u16Bit = LED_FLASH_ERR;
+    }
+    else if((u8Cond & (COND_CURR_WARN | COND_TEMP_WARN)) != 0U)
+    {
+      u16Bit = LED_FLASH_WARN;
+    }
+
+    if(0U == u16Bit)
+    {
+      speaker_Off();
+    }
+    else if(((UINT16)mg_u32SystemTime & u16Bit) == 0U)
     {
       speaker_Buzz();
     }
-  }
-  else
-  {
-    speaker_Off();
   }
 }
 

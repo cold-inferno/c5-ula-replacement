@@ -241,7 +241,7 @@
 
 /** @brief This value defines the firmware version which will be stored in 
     flash memory.                                                             */
-#define FW_VERSION          1202U  // 2026: V1200 LiFePO4 + pedelec, V1201 speed bar, V1202 ride log
+#define FW_VERSION          1203U  // 2026: V1200 LiFePO4 + pedelec, V1201 speed bar, V1202 ride log, V1203 fault codes + resting voltage fix
 
 /** @brief This value defines the firmware CRC32 checksum version which will be 
     stored in flash memory.                                                   */

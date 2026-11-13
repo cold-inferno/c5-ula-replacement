@@ -230,8 +230,8 @@ void current_UpdateSum (void)
         mg_au16AvgData array define the span of time used for calculating the 
         average motor current.
         
-        An example: AVG_COUNT = 8 and calling current_UpdateSum() every 128ms 
-        (see application loop in main()) results in a time span of 1.024s.
+        An example: AVG_COUNT = 8 and calling current_UpdateAvg() every 64ms 
+        (see application loop in main()) results in a time span of 0.512s.
         
 @see    mg_au16AvgData
 @see    AVG_COUNT

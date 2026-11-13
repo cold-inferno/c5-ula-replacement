@@ -1,4 +1,4 @@
-# C5 ULA replacement — firmware V1202
+# C5 ULA replacement — firmware V1203
 
 A replacement for the **Ferranti ULA (5G014)** control chip of the **Sinclair C5**, built on
 **["ULA replacement" by Philipp Bank (cypax)](https://www.cypax.net/projects/ula/)** (2010–2011).
@@ -10,8 +10,9 @@ This repository continues that project with new firmware, a fixed bootloader, su
 
 ![Board, top and bottom (rendered from the Gerber files)](hardware/preview.png)
 
-> **Status:** firmware V1202 and bootloader V1044 are tested on the bench on an ATmega328P board
-> (flashed, read back byte-identical, logging and serial verified). Not yet road-tested in a C5.
+> **Status:** bootloader V1044 and firmware V1202 were tested on the bench on an ATmega328P board
+> (flashed, read back byte-identical, logging and serial verified). Firmware V1203 builds and passes
+> the checks but hasn't been run on hardware yet. Not yet road-tested in a C5.
 > The ATmega88 builds compile and pass the same checks but haven't been run on hardware.
 
 ## What's new compared to cypax V1172
@@ -31,10 +32,14 @@ This repository continues that project with new firmware, a fixed bootloader, su
 **Display and logging**
 - Left LED bar shows **speed** (1 LED per 5 km/h) while the motor button is released,
   motor current while it is pressed.
+- Clear **fault codes** (V1203): one LED per kind of fault, slow flash = warning, fast flash =
+  error, buzzer in the same rhythm. All codes are in [CHEATSHEET.md](CHEATSHEET.md).
 - Optional **ride log** (off by default): reset-cause counters, an event log of warnings and
   errors, and a 60-second **black box** saved after an unexpected restart.
 
 **Robustness**
+- Stall protection (V1203): high current while the wheel doesn't turn cuts the motor until the
+  button is released; the 140 A cut no longer retries forever.
 - Bootloader V1044: switches the watchdog off at start (the original could hang in a reset
   loop after a watchdog reset until the C5 was switched off), supports 128-byte flash pages
   and hands the reset cause to the firmware.
@@ -42,15 +47,17 @@ This repository continues that project with new firmware, a fixed bootloader, su
 - Builds with today's avr-gcc for **ATmega88** (original) and **ATmega328P** (pin-compatible).
 
 **Tools**
-- Browser configurator (Web Serial): live data, settings, firmware upload, ride log.
+- Browser configurator (Web Serial, or Web Bluetooth with an HM-10 / AT-09 module): live data,
+  settings, firmware upload (USB only), ride log. Refuses firmware built for the other chip.
 - Python tools for macOS/Linux: CRC (replaces `crc_calc.exe`), monitor/upload, log decoder.
-- Host unit tests for the motor relay logic.
+- Host unit tests for the motor relay and stall logic.
 
 ## Repository layout
 
 | Path | Contents |
 |---|---|
 | `*.c`, `*.h`, `makefile` | firmware |
+| `CHEATSHEET.md` | all LED, buzzer, serial and ride-log codes |
 | `bootloader/` | bootloader |
 | `release/` | ready-to-flash files per chip (`_m88`, `_m328p`) and EEPROM defaults |
 | `configurator/` | browser configurator (`index.html`) and macOS launcher |
@@ -98,7 +105,7 @@ avrdude -c usbasp -p m328p -U lfuse:w:0xF7:m -U hfuse:w:0xD2:m -U efuse:w:0xFC:m
 avrdude -c usbasp -p m328p -e -U flash:w:bootloader_V1044_m328p.hex:i
 # then upload the firmware over serial (configurator or tools/ula_monitor.py upload),
 # or directly with the programmer:
-avrdude -c usbasp -p m328p -D -U flash:w:ULA_firmware_V1202_LiFePO4_m328p.hex:i -U eeprom:w:ULA_eeprom_defaults.eep:i
+avrdude -c usbasp -p m328p -D -U flash:w:ULA_firmware_V1203_LiFePO4_m328p.hex:i -U eeprom:w:ULA_eeprom_defaults.eep:i
 ```
 
 The 328P brown-out level of 4.3 V keeps the chip off below that voltage, so a programmer
@@ -112,18 +119,27 @@ support it). It must be served from `localhost` or https: on macOS double-click
 `python3 -m http.server 8765 --directory configurator` and open <http://localhost:8765>.
 The **Demo** button simulates a C5.
 
+**Bluetooth:** with an HM-10 / AT-09 serial module on the 4-pin header, *Connect Bluetooth* gives
+live data and settings without a cable (Chrome/Edge, Chrome on Android, Bluefy on iPhone).
+Entering configuration mode over Bluetooth depends on the module reconnecting within the
+bootloader's 2 seconds; if it misses, just try again. Firmware upload is USB only.
+
+The original Windows `Uploader.exe` is no longer supported: it only accepts bootloader V1042.
+Use this configurator or `tools/ula_monitor.py` instead.
+
 - **Live data:** speed, cadence, battery (live and resting), current, relay, button,
   temperature, warnings and a mirror of the pod LEDs.
 - **Settings:** click *Enter configuration mode*, then switch the C5 off and on (the bootloader
   listens for 2 s after power-on). Values are written and read back to verify.
 - **Firmware update** and **Ride log** (read, chart, CSV export, clear) also run through the bootloader.
+  The upload checks that the file matches the chip on the board (`_m88` / `_m328p`).
 
 ## Settings (EEPROM)
 
 | Offset | Size | Setting | Default |
 |---|---|---|---|
 | 0 | 1 | pedal assist (pedelec) on/off | on |
-| 1 | 2 | wheel circumference, mm | 1280 |
+| 1 | 2 | wheel circumference, mm (configurator limit 1500) | 1280 |
 | 3 | 2 | max speed, 0.1 km/h (0 = no limit, V1200+) | 250 |
 | 5 | 2 | min speed, 0.1 km/h | 30 |
 | 7 | 2 | fan switch-on temperature, °C | 45 |
@@ -135,8 +151,8 @@ All values are little-endian. The ride log uses offsets 16 and up (see `ridelog.
 
 ## Serial interface
 
-9600 baud, 8N1, 5 V TTL. At start-up the firmware prints its version, CRC, battery profile and
-settings, then four status lines per second:
+9600 baud, 8N1, 5 V TTL. At start-up the firmware prints its version, CRC and battery profile (up to V1202 also the
+settings; read those in configuration mode now), then four status lines per second:
 
 ```
 #DIST|SPEED|RPM|TIMEOUT|SWITCH|TEMP|VOLT|VREF|CURR|ENA|COND|TIME|REST|
@@ -164,10 +180,24 @@ self-test) is embedded by `tools/fwcrc.py`.
 ```bash
 python3 tools/ula_monitor.py listen            # decode the live data (sends nothing)
 python3 tools/ula_monitor.py settings          # read settings via the bootloader
-python3 tools/ula_monitor.py upload release/ULA_firmware_V1202_LiFePO4_m328p.hex
+python3 tools/ula_monitor.py upload release/ULA_firmware_V1203_LiFePO4_m328p.hex
 python3 tools/ula_log.py usbasp m328p          # read and decode the ride log with a USBasp
 python3 tools/ula_log.py serial --csv bb.csv   # same over serial, black box as CSV
 ```
+
+## Known limitations
+
+- Stall protection (V1203) uses guessed limits (about 80 A for 3 s without a wheel pulse, see
+  `pedelec.h`) that still need tuning on the road. Without a wheel sensor only the
+  "third 140 A cut in a row" rule protects a blocked motor.
+- The temperature table assumes a sensor of about 4 kΩ at room temperature; check that *Live data*
+  shows a plausible motor temperature before relying on it.
+- A rare timing race when reading the pedal sensor can drop the motor for about 0.5 s; assist
+  continues for up to 2 s after you stop pedalling (by design).
+- The bootloader starts the firmware without verifying it (the firmware checks itself while
+  running), and stays in configuration mode until *Start C5* or a power cycle.
+- Wheels above 1820 mm overflow the speed sensor's bounce filter.
+- Ride log: a quick off-and-on is recorded as a brown-out.
 
 ## Credits and license
 

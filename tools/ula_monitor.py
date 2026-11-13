@@ -8,6 +8,11 @@ extra Python packages needed).
                                              (read commands only, then starts
                                              the firmware again)
 
+  ula_monitor.py upload FILE.hex [port] [--force]
+                                             upload firmware through the
+                                             bootloader; refuses a file built
+                                             for the other chip
+
 port defaults to the first /dev/cu.usbserial* / /dev/ttyUSB* device.
 Serial: 9600 baud, 8N1.
 """
@@ -69,7 +74,7 @@ def adc_to_celsius(adc):
     ntc = (1024 * 1100) // adc - 1100
     for lim, deg in [(12500, 0), (9000, 5), (7500, 10), (6000, 15), (4700, 20), (3800, 25),
                      (3300, 30), (2500, 35), (2000, 40), (1700, 45), (1200, 50), (1000, 55),
-                     (800, 60), (900, 65), (800, 70), (600, 75), (500, 80)]:
+                     (900, 60), (800, 65), (700, 70), (600, 75), (500, 80)]:
         if ntc >= lim:
             return deg
     return 85
@@ -120,11 +125,51 @@ def enter_bootloader(fd, wait=30):
         t_end = time.time() + 0.5
         while len(ans) < 2 and time.time() < t_end:
             ans += read_some(fd, 0.05)
-        if len(ans) == 2 and 1000 <= ((ans[0] << 8) | ans[1]) <= 9999:
+        # real versions are 1042 and up (high byte 0x04); the firmware's text
+        # output never contains a byte 0x04, so it can't pass as a bootloader
+        if len(ans) == 2 and 1040 <= ((ans[0] << 8) | ans[1]) <= 1279:
             termios.tcflush(fd, termios.TCIFLUSH)
             return (ans[0] << 8) | ans[1]
         termios.tcflush(fd, termios.TCIFLUSH)   # false alarm: keep trying
     raise SystemExit('Bootloader not found. Adapter TX must go to board RXD.')
+
+
+CHIP_NAME = {'m88': 'ATmega88', 'm328p': 'ATmega328P'}
+
+
+def hex_chip(image):
+    """Chip a firmware image was built for, from its interrupt vector table.
+    ATmega328P entries are 4 bytes: 'jmp' (0C 94 lo hi) or, after linker
+    relaxation, 'rjmp' + 'nop' (.. Cx 00 00). ATmega88 entries are 2 bytes,
+    so two 'rjmp' follow each other directly (.. Cx .. Cx)."""
+    if image[0] == 0x0C and image[1] == 0x94:
+        return 'm328p'
+    if image[1] & 0xF0 == 0xC0:
+        if image[2] == 0 and image[3] == 0:
+            return 'm328p'
+        if image[3] & 0xF0 == 0xC0:
+            return 'm88'
+    return None
+
+
+def board_chip(fd):
+    """Chip on the board, from its EEPROM size (works with every bootloader
+    version, writes nothing): on the ATmega88 (512 bytes) address 512+n wraps
+    to n; on the ATmega328P (1024 bytes) it holds something else."""
+    def rd(off):
+        os.write(fd, bytes([ord('r'), off & 255, off >> 8]))
+        out = b''
+        t_end = time.time() + 1.0
+        while not out and time.time() < t_end:
+            out = read_some(fd, 0.05)
+        if not out:
+            raise SystemExit('No answer while reading the EEPROM')
+        return out[0]
+    low = [rd(o) for o in range(12)]
+    high = [rd(512 + o) for o in range(12)]
+    if len(set(low)) == 1:
+        return None                     # blank memory: can't tell
+    return 'm88' if low == high else 'm328p'
 
 
 def listen(port, seconds):
@@ -191,9 +236,9 @@ def settings(port, wait=30):
     os.close(fd)
 
 
-def upload(port, hexfile, wait=30):
+def upload(port, hexfile, wait=30, force=False):
     """Upload an application firmware HEX through the bootloader (protocol of
-    bootloader V1042/V1043: 'f' + 112 x (64 bytes + 8-bit sum), 'O' per block,
+    bootloader V1042..V1044: 'f' + 112 x (64 bytes + 8-bit sum), 'O' per block,
     'D' at the end). Leaves the device in the bootloader (no start)."""
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import fwcrc
@@ -217,6 +262,18 @@ def upload(port, hexfile, wait=30):
         return out
 
     print(f'Bootloader V{blv}')
+    # wrong-chip check: a file for the other chip passes every checksum but
+    # leaves the board dead until the right file is uploaded
+    want, have = hex_chip(image), board_chip(fd)
+    print(f'File is for {CHIP_NAME.get(want, "an unknown chip")}, '
+          f'board has {CHIP_NAME.get(have, "an unknown chip")}')
+    if want and have and want != have:
+        os.close(fd)
+        raise SystemExit(f'Not uploaded: wrong file for this board. Use the _{have}.hex file.')
+    if (not want or not have) and not force:
+        os.close(fd)
+        raise SystemExit('Not uploaded: the chip could not be checked. '
+                         'Add --force if you are sure the file fits the board.')
     print(f'Uploading firmware V{ver} ({hexfile})')
     os.write(fd, b'f')
     time.sleep(0.05)
@@ -242,9 +299,11 @@ def upload(port, hexfile, wait=30):
 
 
 def main(argv):
+    force = '--force' in argv
+    argv = [a for a in argv if a != '--force']
     if argv and argv[0] == 'upload' and len(argv) >= 2:
         port = argv[2] if len(argv) > 2 else find_port()
-        upload(port, argv[1])
+        upload(port, argv[1], force=force)
         return 0
     if not argv or argv[0] not in ('listen', 'settings'):
         print(__doc__)
